@@ -1,10 +1,10 @@
 {
-  "name": "plugin-template",
+  "name": "plugin-beam",
   "build": {
     "context": ".",
     "dockerfile": "Dockerfile"
   },
-  "workspaceFolder": "/workspaces/plugin-template",
+  "workspaceFolder": "/workspaces/plugin-beam",
   "forwardPorts": [8080],
   "customizations": {
     "vscode": {
