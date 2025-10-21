@@ -1,0 +1,34 @@
+id: word-count
+namespace: io.kestra.plugin.beam
+
+tasks:
+  - id: beam-wordcount
+    type: io.kestra.plugin.beam.BeamPipeline
+    runner: DIRECT
+    sdk: JAVA
+    # Sample word count pipeline definition
+    definition: |
+      transforms:
+        - name: ReadFromText
+          spec:
+            path: /data/input.txt
+        - name: CountWords
+          spec:
+            groupByKey: true
+            slidingWindow:
+              size: PT1H
+              period: PT15M
+        - name: WriteToText
+          spec:
+            path: /data/output.txt
+
+    # Optional runner-specific configuration
+    runnerConfig:
+      parallelism: 4
+      checkpointInterval: PT1M
+
+    # Optional pipeline-level options
+    options:
+      project: my-project
+      region: us-central1
+      tempLocation: gs://my-bucket/temp
