@@ -1,0 +1,16 @@
+id: beam_direct_python
+namespace: company.team
+
+tasks:
+  - id: run_pipeline
+    type: io.kestra.plugin.beam.RunPipeline
+    sdk: PYTHON
+    runner: DIRECT
+    definition: |
+      pipeline:
+        type: chain
+        transforms:
+          - type: Create
+            config:
+              elements: [1, 2, 3]
+          - type: LogForTesting

@@ -72,6 +72,27 @@ go to http://localhost:8080, your plugin will be available to use
 * Full documentation can be found under: [kestra.io/docs](https://kestra.io/docs)
 * Documentation for developing a plugin is included in the [Plugin Developer Guide](https://kestra.io/docs/plugin-developer-guide/)
 
+## Apache Beam Tasks
+
+`RunPipeline` executes Beam YAML pipelines inline or from a file, forwards Beam counters, distributions, and gauges into Kestra metrics, and can target Direct, Flink, Spark, or Dataflow runners with the Java or Python SDK.
+
+```yaml
+id: beam-direct
+namespace: dev.beam
+
+tasks:
+  - id: run-beam
+    type: io.kestra.plugin.beam.RunPipeline
+    sdk: JAVA
+    runner: DIRECT
+    definition: |
+      pipeline:
+        transforms:
+          - type: ReadFromText
+            config:
+              path: "data.txt"
+          - type: Count
+```
 
 ## License
 Apache 2.0 © [Kestra Technologies](https://kestra.io)
