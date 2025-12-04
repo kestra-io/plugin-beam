@@ -1,0 +1,18 @@
+id: beam_direct_java
+namespace: company.team
+
+tasks:
+  - id: run_pipeline
+    type: io.kestra.plugin.beam.RunPipeline
+    sdk: JAVA
+    runner: DIRECT
+    definition: |
+      pipeline:
+        transforms:
+          - type: ReadFromText
+            config:
+              path: "data.txt"
+          - type: Count
+          - type: WriteToText
+            config:
+              path: "beam-output.txt"
