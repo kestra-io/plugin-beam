@@ -1,7 +1,0 @@
-pipeline:
-  type: chain
-  transforms:
-    - type: Create
-      config:
-        elements: [1, 2, 3]
-    - type: LogForTesting

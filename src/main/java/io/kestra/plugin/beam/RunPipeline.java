@@ -5,21 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Metric;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.executions.metrics.Counter;
 import io.kestra.core.models.executions.metrics.Timer;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.models.tasks.Task;
-import io.kestra.core.models.tasks.runners.TaskRunner;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.beam.config.*;
+import io.kestra.plugin.scripts.exec.AbstractExecScript;
 import io.kestra.plugin.scripts.exec.scripts.models.ScriptOutput;
-import io.kestra.plugin.scripts.exec.scripts.runners.CommandsWrapper;
-import io.kestra.plugin.scripts.runner.docker.Docker;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -69,7 +63,7 @@ import java.util.stream.Collectors;
                   - id: run_pipeline
                     type: io.kestra.plugin.beam.RunPipeline
                     sdk: PYTHON
-                    runner: DIRECT
+                    beamRunner: DIRECT
                     definition: |
                       pipeline:
                         type: chain
@@ -87,25 +81,100 @@ import java.util.stream.Collectors;
                 namespace: company.team
 
                 tasks:
+                  - id: write
+                    type: io.kestra.plugin.core.storage.Write
+                    content: |
+                      pipeline:
+                        type: chain
+                        transforms:
+                          - type: Create
+                            config:
+                              elements: [1, 2, 3]
+                          - type: LogForTesting
+                    extension: .yaml
+
+                  - id: upload
+                    type: io.kestra.plugin.core.namespace.UploadFiles
+                    filesMap:
+                      pipeline.yaml: "{{ outputs.write.uri }}"
+                    namespace: "{{ flow.namespace }}"
+
                   - id: run_pipeline
                     type: io.kestra.plugin.beam.RunPipeline
+                    namespaceFiles:
+                      enabled: true
+                      include:
+                        - pipeline.yaml
                     taskRunner:
                       type: io.kestra.plugin.scripts.runner.docker.Docker
                       privileged: true
+                      networkMode: host
                       volumes:
                         - /var/run/docker.sock:/var/run/docker.sock
+                    containerImage: python:3.13-slim
                     sdk: PYTHON
-                    runner: FLINK
-                    file: "pipelines/pipeline.yaml"
+                    beamRunner: FLINK
+                    file: "{{ outputs.write.uri }}"
                     options:
                       flink_master: "http://localhost:56478"
                       parallelism: "4"
                       temp_location: "s3://my-bucket/tmp/"
-                      environment_type: DOCKER # https://beam.apache.org/documentation/runtime/sdk-harness-config/
+                      environment_type: DOCKER
                     runnerConfig:
                       flinkRestUrl: "http://localhost:56478"
                     requirements:
                       - apache-beam==2.69.0
+                """
+        ),
+        @Example(
+            title = "Run a pipeline from a YAML file with the Spark runner and the Python SDK",
+            code = """
+                id: beam_flink_python
+                namespace: company.team
+
+                tasks:
+                  - id: write
+                    type: io.kestra.plugin.core.storage.Write
+                    content: |
+                      pipeline:
+                        type: chain
+                        transforms:
+                          - type: Create
+                            config:
+                              elements: [1, 2, 3]
+                          - type: LogForTesting
+                    extension: .yaml
+
+                  - id: upload
+                    type: io.kestra.plugin.core.namespace.UploadFiles
+                    filesMap:
+                      pipeline.yaml: "{{ outputs.write.uri }}"
+                    namespace: "{{ flow.namespace }}"
+
+                  - id: run_pipeline
+                    type: io.kestra.plugin.beam.RunPipeline
+                    namespaceFiles:
+                      enabled: true
+                      include:
+                        - pipeline.yaml
+                    taskRunner:
+                      type: io.kestra.plugin.scripts.runner.docker.Docker
+                      privileged: true
+                      networkMode: host
+                      volumes:
+                        - /var/run/docker.sock:/var/run/docker.sock
+                    containerImage: python:3.13-slim
+                    sdk: PYTHON
+                    beamRunner: SPARK
+                    file: "{{ outputs.write.uri }}"
+                    options:
+                      spark_master: "spark://localhost:7077"
+                      environment_type: DOCKER
+                      temp_location: "s3://my-bucket/tmp/"
+                    runnerConfig:
+                      master: "spark://localhost:7077"
+                    requirements:
+                      - apache-beam[spark]==2.69.0
                 """
         )
     },
@@ -115,7 +184,8 @@ import java.util.stream.Collectors;
         @Metric(name = "beam.gauge", type = Counter.TYPE, description = "Beam gauges forwarded as counters with prefix 'beam.gauge.*'")
     }
 )
-public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output> {
+public class RunPipeline extends AbstractExecScript implements io.kestra.core.models.tasks.RunnableTask<ScriptOutput> {
+    private static final String DEFAULT_IMAGE = "python:3.13-slim";
 
     @Schema(title = "Path to a YAML pipeline definition stored in Kestra storage or locally.")
     private Property<String> file;
@@ -126,7 +196,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
     @Schema(title = "Beam runner to use.")
     @NotNull
     @Builder.Default
-    private Property<BeamRunner> runner = Property.ofValue(BeamRunner.DIRECT);
+    private Property<BeamRunner> beamRunner = Property.ofValue(BeamRunner.DIRECT);
 
     @Schema(title = "Beam SDK to execute the pipeline.")
     @NotNull
@@ -145,52 +215,44 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
     @Builder.Default
     private Property<List<String>> requirements = Property.ofValue(Collections.emptyList());
 
-    @Schema(
-        title = "The task runner to use.",
-        description = "Task runners are provided by plugins, each have their own properties."
-    )
-    @PluginProperty
     @Builder.Default
-    @Valid
-    private TaskRunner<?> taskRunner = Docker.instance();
-
     @Schema(title = "The task runner container image, only used if the task runner is container-based.")
-    @PluginProperty(dynamic = true)
-    @Builder.Default
-    private String containerImage = "python:3.13-slim";
+    protected Property<String> containerImage = Property.ofValue(DEFAULT_IMAGE);
 
     @Override
-    public Output run(RunContext runContext) throws Exception {
-        BeamRunner rRunner = runContext.render(this.runner).as(BeamRunner.class).orElse(BeamRunner.DIRECT);
+    public Property<String> getContainerImage() {
+        return this.containerImage;
+    }
+
+    @Override
+    public ScriptOutput run(RunContext runContext) throws Exception {
+        BeamRunner rBeamRunner = runContext.render(this.beamRunner).as(BeamRunner.class).orElse(BeamRunner.DIRECT);
         BeamSDK rSdk = runContext.render(this.sdk).as(BeamSDK.class).orElse(BeamSDK.JAVA);
         String rYaml = loadDefinition(runContext);
+
         Map<String, String> rOptions = runContext.render(this.options).asMap(String.class, String.class);
-        RunnerConfigHolder configHolder = resolveRunnerOptions(runContext, rRunner);
-        applyRunnerSideEffects(runContext, rRunner, configHolder);
+        RunnerConfigHolder configHolder = resolveRunnerOptions(runContext, rBeamRunner);
+        applyRunnerSideEffects(runContext, rBeamRunner, configHolder);
+
         Map<String, Object> runnerOptions = configHolder.options();
         List<String> rRequirements = runContext.render(this.requirements).asList(String.class);
 
         runContext.logger().info(
             "Starting Beam pipeline sdk={} runner={} options={} runnerConfigKeys={}",
-            rSdk, rRunner, rOptions.keySet(), runnerOptions.keySet()
+            rSdk, rBeamRunner, rOptions.keySet(), runnerOptions.keySet()
         );
 
-        PipelineRunResult result = rSdk == BeamSDK.PYTHON
-            ? runWithPython(runContext, rYaml, rRunner, rOptions, runnerOptions, rRequirements)
-            : runWithJava(runContext, rYaml, rRunner, rOptions, runnerOptions, configHolder.config());
+        if (rSdk == BeamSDK.PYTHON) {
+            return runWithPython(runContext, rYaml, rBeamRunner, rOptions, runnerOptions, rRequirements);
+        }
 
-        return Output.builder()
-            .state(result.getState())
-            .jobId(result.getJobId())
-            .runner(rRunner)
-            .sdk(rSdk)
-            .counters(result.getMetrics().getCounters())
-            .distributions(result.getMetrics().getDistributions())
-            .gauges(result.getMetrics().getGauges())
-            .build();
+        runWithJava(runContext, rYaml, rBeamRunner, rOptions, runnerOptions, configHolder.config());
+
+        // minimal ScriptOutput for JAVA SDK path
+        return ScriptOutput.builder().exitCode(0).build();
     }
 
-    private PipelineRunResult runWithJava(
+    private void runWithJava(
         RunContext runContext,
         String yamlDefinition,
         BeamRunner runner,
@@ -201,10 +263,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         PipelineOptions pipelineOptions = createPipelineOptions(options, runnerOptions, runner);
 
         if (runner == BeamRunner.FLINK && runnerConfig instanceof FlinkRunnerConfig flinkConfig) {
-            logUnused(
-                runContext,
-                flinkConfig.getJarPath(),
-                "jarPath is staged via filesToStage; Flink runner handles jar staging.");
+            logUnused(runContext, flinkConfig.getJarPath(), "jarPath is staged via filesToStage; Flink runner handles jar staging.");
         }
 
         if (runner == BeamRunner.SPARK && runnerConfig instanceof SparkRunnerConfig sparkConfig) {
@@ -220,13 +279,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         pipelineResult.waitUntilFinish();
 
         MetricQueryResults metricQueryResults = pipelineResult.metrics().queryMetrics(MetricsFilter.builder().build());
-        BeamMetricSnapshot metrics = publishMetrics(runContext, metricQueryResults);
-
-        return PipelineRunResult.builder()
-            .state(pipelineResult.getState() != null ? pipelineResult.getState().toString() : "UNKNOWN")
-            .jobId("FIXME") // FIXME
-            .metrics(metrics)
-            .build();
+        publishMetrics(runContext, metricQueryResults);
     }
 
     private PipelineOptions createPipelineOptions(
@@ -243,7 +296,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         return pipelineOptions;
     }
 
-    private PipelineRunResult runWithPython(
+    private ScriptOutput runWithPython(
         RunContext runContext,
         String yamlDefinition,
         BeamRunner runner,
@@ -265,13 +318,13 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         ));
 
         // 2) bootstrap pip
-        runCommand(runContext, "pip", env, String.join(" ",
+        runCommand(runContext, "pip-bootstrap", env, String.join(" ",
             shellQuote(venvPython.toString()), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"
         ));
 
         // 3) install deps (always include Beam YAML support)
         List<String> toInstall = new ArrayList<>();
-        toInstall.add("apache-beam[yaml]==2.69.0"); // FIXME: make the version configurable
+        toInstall.add("apache-beam[yaml]==2.69.0");
         if (requirements != null) {
             toInstall.addAll(requirements);
         }
@@ -281,9 +334,9 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
                 + " -m pip install "
                 + toInstall.stream().map(this::shellQuote).collect(Collectors.joining(" "));
 
-        runCommand(runContext, "pip", env, pipInstallCmd);
+        runCommand(runContext, "pip-install", env, pipInstallCmd);
 
-        // 4) run beam yaml cli
+        // 4) run beam yaml cli + publish vars via stdout marker
         List<String> cmd = new ArrayList<>();
         cmd.add(shellQuote(venvPython.toString()));
         cmd.add("-m");
@@ -294,23 +347,25 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         cmd.add(shellQuote(resolvePythonRunner(runner)));
         cmd.addAll(buildOptionArgs(options, runnerOptions).stream().map(this::shellQuote).toList());
 
-        runCommand(runContext, "beam-python", env, String.join(" ", cmd));
+        String finalCmd = String.join(" ", cmd)
+            + " && echo '::{\"outputs\":{\"state\":\"FINISHED\"}}::'";
 
-        runContext.logger().info("Beam Python SDK completed; metrics are not available through the YAML CLI runner.");
-
-        return PipelineRunResult.builder()
-            .state("FINISHED")
-            .jobId("FIXME") // FIXME
-            .metrics(BeamMetricSnapshot.empty())
-            .build();
+        return runCommandReturnOutput(runContext, "beam-python", env, finalCmd);
     }
 
     private void runCommand(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
-        ScriptOutput out = new CommandsWrapper(runContext)
+        ScriptOutput out = runCommandReturnOutput(runContext, label, env, command);
+        Integer exit = out == null ? null : out.getExitCode();
+        if (exit == null || exit != 0) {
+            throw new IllegalStateException("Command failed [" + label + "] exitCode=" + exit + " command=" + command);
+        }
+    }
+
+    private ScriptOutput runCommandReturnOutput(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
+        ScriptOutput out = this.commands(runContext)
             .withEnv(env)
-            .withTaskRunner(this.taskRunner)
-            .withContainerImage(this.containerImage)
-            .withInterpreter(Property.ofValue(List.of("/bin/sh", "-c")))
+            .withInterpreter(this.interpreter)
+            .withFailFast(runContext.render(this.failFast).as(Boolean.class).orElse(true))
             .withCommands(Property.ofValue(List.of(command)))
             .run();
 
@@ -318,6 +373,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         if (exit == null || exit != 0) {
             throw new IllegalStateException("Command failed [" + label + "] exitCode=" + exit + " command=" + command);
         }
+        return out;
     }
 
     private String shellQuote(String s) {
@@ -328,40 +384,49 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         return "'" + s.replace("'", "'\"'\"'") + "'";
     }
 
-    private BeamMetricSnapshot publishMetrics(RunContext runContext, MetricQueryResults metricQueryResults) {
-        Map<String, Long> counters = new LinkedHashMap<>();
-        Map<String, Double> distributions = new LinkedHashMap<>();
-        Map<String, Double> gauges = new LinkedHashMap<>();
-
+    private void publishMetrics(RunContext runContext, MetricQueryResults metricQueryResults) {
         for (MetricResult<Long> counter : metricQueryResults.getCounters()) {
             String key = metricKey(counter.getKey());
-            Long value = counter.getAttempted();
-            counters.put(key, value);
-            runContext.metric(Counter.of("beam.counter." + key, Objects.requireNonNull(counter.getAttempted()), buildTags(counter.getKey())));
+            runContext.metric(io.kestra.core.models.executions.metrics.Counter.of(
+                "beam.counter." + key,
+                Objects.requireNonNull(counter.getAttempted()),
+                buildTags(counter.getKey())
+            ));
         }
 
         for (MetricResult<DistributionResult> distribution : metricQueryResults.getDistributions()) {
             String key = metricKey(distribution.getKey());
             DistributionResult result = distribution.getAttempted();
-            double mean = Objects.requireNonNull(result).getCount() == 0 ? 0 : result.getMean();
-            distributions.put(key, mean);
+            if (result == null) {
+                continue;
+            }
+
+            double mean = result.getCount() == 0 ? 0 : result.getMean();
             Duration duration = Duration.ofMillis(Math.round(mean));
-            runContext.metric(Timer.of("beam.distribution." + key, duration, buildTags(distribution.getKey())));
-            runContext.metric(Counter.of("beam.distribution." + key + ".count", result.getCount(), buildTags(distribution.getKey())));
+            runContext.metric(io.kestra.core.models.executions.metrics.Timer.of(
+                "beam.distribution." + key,
+                duration,
+                buildTags(distribution.getKey())
+            ));
+            runContext.metric(io.kestra.core.models.executions.metrics.Counter.of(
+                "beam.distribution." + key + ".count",
+                result.getCount(),
+                buildTags(distribution.getKey())
+            ));
         }
 
         for (MetricResult<GaugeResult> gauge : metricQueryResults.getGauges()) {
             String key = metricKey(gauge.getKey());
-            double value = Objects.requireNonNull(gauge.getAttempted()).getValue();
-            gauges.put(key, value);
-            runContext.metric(Counter.of("beam.gauge." + key, value, buildTags(gauge.getKey())));
+            GaugeResult attempted = gauge.getAttempted();
+            if (attempted == null) {
+                continue;
+            }
+            runContext.metric(io.kestra.core.models.executions.metrics.Counter.of(
+                "beam.gauge." + key,
+                attempted.getValue(),
+                buildTags(gauge.getKey())
+            ));
         }
-
-        return BeamMetricSnapshot.builder()
-            .counters(counters)
-            .distributions(distributions)
-            .gauges(gauges)
-            .build();
     }
 
     private String metricKey(MetricKey metricKey) {
@@ -485,6 +550,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
     }
 
     private String readFile(RunContext runContext, String path) throws Exception {
+        // 1) storage URI
         try {
             URI uri = URI.create(path);
             try (InputStream inputStream = runContext.storage().getFile(uri)) {
@@ -494,6 +560,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
             // fallthrough
         }
 
+        // 2) classpath (tests / resources)
         InputStream resource = RunPipeline.class.getClassLoader().getResourceAsStream(path);
         if (resource != null) {
             try (resource) {
@@ -501,6 +568,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
             }
         }
 
+        // 3) local filesystem (including namespaceFiles injected into workingDir)
         Path localPath = Paths.get(path);
         if (!localPath.isAbsolute()) {
             localPath = runContext.workingDir().resolve(localPath);
@@ -530,63 +598,5 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         if (value != null) {
             runContext.logger().debug(message);
         }
-    }
-
-    @Builder
-    @Getter
-    @AllArgsConstructor
-    private static class PipelineRunResult {
-        private final String state;
-        private final String jobId;
-        @Builder.Default
-        private final BeamMetricSnapshot metrics = BeamMetricSnapshot.empty();
-    }
-
-    @Builder
-    @Getter
-    @AllArgsConstructor
-    private static class BeamMetricSnapshot {
-        @Builder.Default
-        private final Map<String, Long> counters = Collections.emptyMap();
-        @Builder.Default
-        private final Map<String, Double> distributions = Collections.emptyMap();
-        @Builder.Default
-        private final Map<String, Double> gauges = Collections.emptyMap();
-
-        public static BeamMetricSnapshot empty() {
-            return BeamMetricSnapshot.builder().build();
-        }
-    }
-
-    @Builder
-    @Getter
-    @AllArgsConstructor
-    @NoArgsConstructor
-    @EqualsAndHashCode
-    @ToString
-    public static class Output implements io.kestra.core.models.tasks.Output {
-        @Schema(title = "Pipeline state as reported by the runner")
-        private String state;
-
-        @Schema(title = "Runner used for this execution")
-        private BeamRunner runner;
-
-        @Schema(title = "SDK used for this execution")
-        private BeamSDK sdk;
-
-        @Schema(title = "Runner job id when available")
-        private String jobId;
-
-        @Schema(title = "Beam counter metrics forwarded to Kestra")
-        @Builder.Default
-        private Map<String, Long> counters = Collections.emptyMap();
-
-        @Schema(title = "Beam distribution metrics forwarded to Kestra")
-        @Builder.Default
-        private Map<String, Double> distributions = Collections.emptyMap();
-
-        @Schema(title = "Beam gauge metrics forwarded to Kestra")
-        @Builder.Default
-        private Map<String, Double> gauges = Collections.emptyMap();
     }
 }

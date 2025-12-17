@@ -66,8 +66,30 @@ tasks:
     type: io.kestra.plugin.core.flow.Sleep
     duration: PT15S
 
+  - id: write
+    type: io.kestra.plugin.core.storage.Write
+    content: |
+      pipeline:
+        type: chain
+        transforms:
+          - type: Create
+            config:
+              elements: [1, 2, 3]
+          - type: LogForTesting
+    extension: .yaml
+
+  - id: upload
+    type: io.kestra.plugin.core.namespace.UploadFiles
+    filesMap:
+      pipeline.yaml: "{{ outputs.write.uri }}"
+    namespace: "{{ flow.namespace }}"
+
   - id: run_pipeline
     type: io.kestra.plugin.beam.RunPipeline
+    namespaceFiles:
+      enabled: true
+      include:
+        - pipeline.yaml
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
       privileged: true
@@ -76,8 +98,8 @@ tasks:
         - /var/run/docker.sock:/var/run/docker.sock
     containerImage: python:3.13-slim
     sdk: PYTHON
-    runner: SPARK
-    file: "pipelines/pipeline.yaml"
+    beamRunner: SPARK
+    file: "{{ outputs.write.uri }}"
     options:
       spark_master: "spark://localhost:7077"
       environment_type: DOCKER
@@ -90,7 +112,7 @@ tasks:
   - id: assert
     type: io.kestra.plugin.core.execution.Assert
     conditions:
-      - "{{ outputs.run_pipeline.state == 'FINISHED' }}"
+      - "{{ outputs.run_pipeline.vars.state == 'FINISHED' }}"
 
 finally:
   - id: stopWorker

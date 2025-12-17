@@ -5,7 +5,7 @@ tasks:
   - id: run_pipeline
     type: io.kestra.plugin.beam.RunPipeline
     sdk: PYTHON
-    runner: DIRECT
+    beamRunner: DIRECT
     definition: |
       pipeline:
         type: chain
@@ -18,4 +18,4 @@ tasks:
   - id: assert
     type: io.kestra.plugin.core.execution.Assert
     conditions:
-      - "{{ outputs.run_pipeline.state == 'FINISHED' }}"
+      - "{{ outputs.run_pipeline.vars.state == 'FINISHED' }}"

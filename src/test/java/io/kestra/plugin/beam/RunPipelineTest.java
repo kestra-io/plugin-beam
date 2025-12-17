@@ -36,7 +36,7 @@ class RunPipelineTest {
         RunPipeline task = RunPipeline.builder()
             .id("beam")
             .type(RunPipeline.class.getName())
-            .runner(Property.ofValue(BeamRunner.DIRECT))
+            .beamRunner(Property.ofValue(BeamRunner.DIRECT))
             .sdk(Property.ofValue(BeamSDK.JAVA))
             .definition(Property.ofValue("pipeline: {}"))
             .build();
@@ -46,7 +46,7 @@ class RunPipelineTest {
         TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
         RunContext runContext = runContextFactory.of(flow, task, execution, taskRun);
 
-        BeamRunner renderedRunner = runContext.render(task.getRunner()).as(BeamRunner.class).orElseThrow();
+        BeamRunner renderedRunner = runContext.render(task.getBeamRunner()).as(BeamRunner.class).orElseThrow();
         assertEquals(BeamRunner.DIRECT, renderedRunner);
         assertEquals(0, validator.validate(task).size());
     }
@@ -58,7 +58,7 @@ class RunPipelineTest {
         RunPipeline configured = RunPipeline.builder()
             .id("beam")
             .type(RunPipeline.class.getName())
-            .runner(Property.ofValue(BeamRunner.DIRECT))
+            .beamRunner(Property.ofValue(BeamRunner.DIRECT))
             .sdk(Property.ofValue(BeamSDK.JAVA))
             .file(Property.ofValue("placeholder"))
             .build();
@@ -74,7 +74,7 @@ class RunPipelineTest {
         RunPipeline withFile = RunPipeline.builder()
             .id(configured.getId())
             .type(configured.getType())
-            .runner(configured.getRunner())
+            .beamRunner(configured.getBeamRunner())
             .sdk(configured.getSdk())
             .file(Property.ofValue(stored.toString()))
             .options(configured.getOptions())
@@ -96,7 +96,7 @@ class RunPipelineTest {
             .id("beam")
             .type(RunPipeline.class.getName())
             .runnerConfig(Property.ofValue(flinkConfig))
-            .runner(Property.ofValue(BeamRunner.FLINK))
+            .beamRunner(Property.ofValue(BeamRunner.FLINK))
             .sdk(Property.ofValue(BeamSDK.JAVA))
             .definition(Property.ofValue("pipeline: {}"))
             .build();
@@ -112,7 +112,7 @@ class RunPipelineTest {
         RunPipeline sparkTask = RunPipeline.builder()
             .id(base.getId())
             .type(base.getType())
-            .runner(Property.ofValue(BeamRunner.SPARK))
+            .beamRunner(Property.ofValue(BeamRunner.SPARK))
             .sdk(base.getSdk())
             .definition(base.getDefinition())
             .runnerConfig(Property.ofValue(sparkConfig))
@@ -130,7 +130,7 @@ class RunPipelineTest {
         RunPipeline dataflowTask = RunPipeline.builder()
             .id(base.getId())
             .type(base.getType())
-            .runner(Property.ofValue(BeamRunner.DATAFLOW))
+            .beamRunner(Property.ofValue(BeamRunner.DATAFLOW))
             .sdk(base.getSdk())
             .definition(base.getDefinition())
             .runnerConfig(Property.ofValue(dataflowConfig))

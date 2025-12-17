@@ -108,7 +108,7 @@ tasks:
   - id: run-beam
     type: io.kestra.plugin.beam.RunPipeline
     sdk: JAVA
-    runner: DIRECT
+    beamRunner: DIRECT
     definition: |
       pipeline:
         transforms:
