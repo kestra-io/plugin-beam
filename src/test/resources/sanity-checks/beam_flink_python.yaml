@@ -1,0 +1,28 @@
+id: beam_flink_python
+namespace: company.team
+
+tasks:
+  - id: run_pipeline
+    type: io.kestra.plugin.beam.RunPipeline
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      privileged: true
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+    sdk: PYTHON
+    runner: FLINK
+    file: "pipelines/pipeline.yaml"
+    options:
+      flink_master: "http://localhost:56478"
+      parallelism: "4"
+      temp_location: "s3://my-bucket/tmp/"
+      environment_type: DOCKER # https://beam.apache.org/documentation/runtime/sdk-harness-config/
+    runnerConfig:
+      flinkRestUrl: "http://localhost:56478"
+    requirements:
+      - apache-beam==2.69.0
+
+  - id: assert
+    type: io.kestra.plugin.core.execution.Assert
+    conditions:
+      - "{{ outputs.run_pipeline.state == 'FINISHED' }}"

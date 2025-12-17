@@ -2,12 +2,7 @@ package io.kestra.plugin.beam.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import lombok.*;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -47,15 +42,15 @@ public class FlinkRunnerConfig implements RunnerConfig {
     public Map<String, Object> toPipelineOptions() {
         Map<String, Object> options = new LinkedHashMap<>();
 
-        Optional.ofNullable(flinkRestUrl).ifPresent(url -> options.put("flinkMaster", url));
-        if (!options.containsKey("flinkMaster")) {
-            Optional.ofNullable(executionMode).ifPresent(mode -> options.put("flinkMaster", mode));
-        }
+        Optional.ofNullable(flinkRestUrl).ifPresent(url -> options.put("flink_master", url));
+//        if (!options.containsKey("flink_master")) {
+//            Optional.ofNullable(executionMode).ifPresent(mode -> options.put("flink_master", mode));
+//        }
         Optional.ofNullable(parallelism).ifPresent(value -> options.put("parallelism", value));
-        Optional.ofNullable(savepointDir).ifPresent(value -> options.put("savepointPath", value));
-        Optional.ofNullable(stateBackend).ifPresent(value -> options.put("stateBackend", value));
-        Optional.ofNullable(stateBackendStoragePath).ifPresent(value -> options.put("stateBackendStoragePath", value));
-        Optional.ofNullable(jarPath).ifPresent(value -> options.put("filesToStage", value));
+        Optional.ofNullable(savepointDir).ifPresent(value -> options.put("savepoint_path", value));
+        Optional.ofNullable(stateBackend).ifPresent(value -> options.put("state_backend", value));
+        Optional.ofNullable(stateBackendStoragePath).ifPresent(value -> options.put("state_backend_storage_path", value));
+        Optional.ofNullable(jarPath).ifPresent(value -> options.put("files_to_stage", value));
 
         return options;
     }

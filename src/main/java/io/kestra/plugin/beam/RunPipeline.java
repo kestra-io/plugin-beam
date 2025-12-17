@@ -5,15 +5,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Metric;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.executions.metrics.Counter;
 import io.kestra.core.models.executions.metrics.Timer;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.Task;
+import io.kestra.core.models.tasks.runners.TaskRunner;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.beam.config.*;
+import io.kestra.plugin.scripts.exec.scripts.models.ScriptOutput;
+import io.kestra.plugin.scripts.exec.scripts.runners.CommandsWrapper;
+import io.kestra.plugin.scripts.runner.docker.Docker;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -29,10 +35,8 @@ import org.apache.beam.sdk.metrics.*;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -85,16 +89,23 @@ import java.util.stream.Collectors;
                 tasks:
                   - id: run_pipeline
                     type: io.kestra.plugin.beam.RunPipeline
+                    taskRunner:
+                      type: io.kestra.plugin.scripts.runner.docker.Docker
+                      privileged: true
+                      volumes:
+                        - /var/run/docker.sock:/var/run/docker.sock
                     sdk: PYTHON
                     runner: FLINK
-                    file: "{{ workingDir }}/pipeline.yaml"
+                    file: "pipelines/pipeline.yaml"
                     options:
-                      tempLocation: "s3://my-bucket/tmp/"
+                      flink_master: "http://localhost:56478"
+                      parallelism: "4"
+                      temp_location: "s3://my-bucket/tmp/"
+                      environment_type: DOCKER # https://beam.apache.org/documentation/runtime/sdk-harness-config/
                     runnerConfig:
-                      flinkRestUrl: "http://flink-jobmanager:8081"
-                      parallelism: 4
+                      flinkRestUrl: "http://localhost:56478"
                     requirements:
-                      - apache-beam[flink]==2.65.0
+                      - apache-beam==2.69.0
                 """
         )
     },
@@ -105,8 +116,6 @@ import java.util.stream.Collectors;
     }
 )
 public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output> {
-
-    // FIXME: add metadata.yml
 
     @Schema(title = "Path to a YAML pipeline definition stored in Kestra storage or locally.")
     private Property<String> file;
@@ -136,7 +145,19 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
     @Builder.Default
     private Property<List<String>> requirements = Property.ofValue(Collections.emptyList());
 
-    // FIXME add namespaceFiles: enabled: true (see Ben message)
+    @Schema(
+        title = "The task runner to use.",
+        description = "Task runners are provided by plugins, each have their own properties."
+    )
+    @PluginProperty
+    @Builder.Default
+    @Valid
+    private TaskRunner<?> taskRunner = Docker.instance();
+
+    @Schema(title = "The task runner container image, only used if the task runner is container-based.")
+    @PluginProperty(dynamic = true)
+    @Builder.Default
+    private String containerImage = "python:3.13-slim";
 
     @Override
     public Output run(RunContext runContext) throws Exception {
@@ -155,7 +176,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         );
 
         PipelineRunResult result = rSdk == BeamSDK.PYTHON
-            ? runWithPython(runContext, rYaml, rRunner, rOptions, runnerOptions, rRequirements) // FIXME: no runnerConfig passed for Python
+            ? runWithPython(runContext, rYaml, rRunner, rOptions, runnerOptions, rRequirements)
             : runWithJava(runContext, rYaml, rRunner, rOptions, runnerOptions, configHolder.config());
 
         return Output.builder()
@@ -192,22 +213,8 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
             logUnused(runContext, sparkConfig.getAdditionalArgs(), "additionalArgs are not forwarded automatically, consider using 'options'.");
         }
 
-        // FIXME : BeamRunner.DIRECT and BeamRunner.DATAFLOW are missing
-
         Pipeline pipeline = Pipeline.create(pipelineOptions);
-
-        runContext.logger().info("Beam YAML bytes={} first200={}",
-            yamlDefinition.getBytes(StandardCharsets.UTF_8).length,
-            yamlDefinition.substring(0, Math.min(200, yamlDefinition.length())).replace("\n", "\\n")
-        );
-
         pipeline.apply("yaml", YamlTransform.source(yamlDefinition));
-
-        runContext.logger().info("HOME={} user.home={} cwd={}",
-            System.getenv("HOME"),
-            System.getProperty("user.home"),
-            runContext.workingDir().path()
-        );
 
         PipelineResult pipelineResult = pipeline.run();
         pipelineResult.waitUntilFinish();
@@ -217,6 +224,7 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
 
         return PipelineRunResult.builder()
             .state(pipelineResult.getState() != null ? pipelineResult.getState().toString() : "UNKNOWN")
+            .jobId("FIXME") // FIXME
             .metrics(metrics)
             .build();
     }
@@ -245,53 +253,79 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
     ) throws Exception {
         Path yamlFile = runContext.workingDir().createFile("pipeline.yaml", yamlDefinition.getBytes(StandardCharsets.UTF_8));
 
-        // 1) create venv
         Path venvDir = runContext.workingDir().path().resolve(".venv-beam");
         Path venvPython = venvDir.resolve("bin").resolve("python");
-        Path venvPip = venvDir.resolve("bin").resolve("pip");
 
-        int code;
+        Map<String, String> env = new HashMap<>();
+        env.put("APACHE_BEAM_HOME", runContext.workingDir().path().resolve(".apache_beam").toString());
 
-        code = runProcess(runContext, List.of("python3", "-m", "venv", venvDir.toString()), runContext.workingDir().path(), "venv");
-        if (code != 0) throw new IllegalStateException("Failed to create venv, exit code " + code);
+        // 1) create venv
+        runCommand(runContext, "venv", env, String.join(" ",
+            "python3", "-m", "venv", shellQuote(venvDir.toString())
+        ));
 
-        code = runProcess(runContext, List.of(venvPython.toString(), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"),
-            runContext.workingDir().path(), "pip");
-        if (code != 0) throw new IllegalStateException("Failed to bootstrap pip, exit code " + code);
+        // 2) bootstrap pip
+        runCommand(runContext, "pip", env, String.join(" ",
+            shellQuote(venvPython.toString()), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"
+        ));
 
-        // 2) always install Beam YAML support
+        // 3) install deps (always include Beam YAML support)
         List<String> toInstall = new ArrayList<>();
-        toInstall.add("apache-beam[yaml]==2.69.0"); // ou rendre la version configurable
-        if (requirements != null) toInstall.addAll(requirements);
+        toInstall.add("apache-beam[yaml]==2.69.0"); // FIXME: make the version configurable
+        if (requirements != null) {
+            toInstall.addAll(requirements);
+        }
 
-        List<String> pipCmd = new ArrayList<>();
-        pipCmd.add(venvPip.toString());
-        pipCmd.add("install");
-        pipCmd.addAll(toInstall);
+        String pipInstallCmd =
+            shellQuote(venvPython.toString())
+                + " -m pip install "
+                + toInstall.stream().map(this::shellQuote).collect(Collectors.joining(" "));
 
-        code = runProcess(runContext, pipCmd, runContext.workingDir().path(), "pip");
-        if (code != 0) throw new IllegalStateException("Failed to install Python deps, exit code " + code);
+        runCommand(runContext, "pip", env, pipInstallCmd);
 
-        // 3) run beam yaml cli with venv python
-        List<String> command = new ArrayList<>();
-        command.add(venvPython.toString());
-        command.add("-m");
-        command.add("apache_beam.yaml.main");
-        command.add("--yaml_pipeline_file");
-        command.add(yamlFile.toAbsolutePath().toString());
-        command.add("--runner");
-        command.add(resolvePythonRunner(runner));
-        command.addAll(buildOptionArgs(options, runnerOptions));
+        // 4) run beam yaml cli
+        List<String> cmd = new ArrayList<>();
+        cmd.add(shellQuote(venvPython.toString()));
+        cmd.add("-m");
+        cmd.add("apache_beam.yaml.main");
+        cmd.add("--yaml_pipeline_file");
+        cmd.add(shellQuote(yamlFile.toAbsolutePath().toString()));
+        cmd.add("--runner");
+        cmd.add(shellQuote(resolvePythonRunner(runner)));
+        cmd.addAll(buildOptionArgs(options, runnerOptions).stream().map(this::shellQuote).toList());
 
-        code = runProcess(runContext, command, runContext.workingDir().path(), "beam-python");
-        if (code != 0) throw new IllegalStateException("Beam Python process exited with code " + code);
+        runCommand(runContext, "beam-python", env, String.join(" ", cmd));
 
         runContext.logger().info("Beam Python SDK completed; metrics are not available through the YAML CLI runner.");
 
         return PipelineRunResult.builder()
             .state("FINISHED")
+            .jobId("FIXME") // FIXME
             .metrics(BeamMetricSnapshot.empty())
             .build();
+    }
+
+    private void runCommand(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
+        ScriptOutput out = new CommandsWrapper(runContext)
+            .withEnv(env)
+            .withTaskRunner(this.taskRunner)
+            .withContainerImage(this.containerImage)
+            .withInterpreter(Property.ofValue(List.of("/bin/sh", "-c")))
+            .withCommands(Property.ofValue(List.of(command)))
+            .run();
+
+        Integer exit = out == null ? null : out.getExitCode();
+        if (exit == null || exit != 0) {
+            throw new IllegalStateException("Command failed [" + label + "] exitCode=" + exit + " command=" + command);
+        }
+    }
+
+    private String shellQuote(String s) {
+        if (s == null) {
+            return "''";
+        }
+        // minimal safe single-quote escaping for /bin/sh -c
+        return "'" + s.replace("'", "'\"'\"'") + "'";
     }
 
     private BeamMetricSnapshot publishMetrics(RunContext runContext, MetricQueryResults metricQueryResults) {
@@ -371,39 +405,6 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
         } catch (JsonProcessingException e) {
             return String.valueOf(value);
         }
-    }
-
-    private void installRequirements(RunContext runContext, List<String> requirements) throws IOException, InterruptedException {
-        if (requirements == null || requirements.isEmpty()) {
-            return;
-        }
-        List<String> command = new ArrayList<>();
-        command.add("python");
-        command.add("-m");
-        command.add("pip");
-        command.add("install");
-        command.addAll(requirements);
-        int exitCode = runProcess(runContext, command, runContext.workingDir().path(), "pip");
-        if (exitCode != 0) {
-            throw new IllegalStateException("Failed to install Python requirements, exit code " + exitCode);
-        }
-    }
-
-    private int runProcess(RunContext runContext, List<String> command, Path workingDir, String label) throws IOException, InterruptedException {
-        ProcessBuilder builder = new ProcessBuilder(command);
-        builder.redirectErrorStream(true);
-        if (workingDir != null) {
-            builder.directory(workingDir.toFile());
-            builder.environment().put("APACHE_BEAM_HOME", workingDir.resolve(".apache_beam").toString());
-        }
-        Process process = builder.start();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                runContext.logger().info("[{}] {}", label, line);
-            }
-        }
-        return process.waitFor();
     }
 
     private RunnerConfigHolder resolveRunnerOptions(RunContext runContext, BeamRunner runner) throws Exception {
@@ -489,13 +490,22 @@ public class RunPipeline extends Task implements RunnableTask<RunPipeline.Output
             try (InputStream inputStream = runContext.storage().getFile(uri)) {
                 return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
             }
-        } catch (IllegalArgumentException | IOException e) {
-            Path localPath = Paths.get(path);
-            if (!localPath.isAbsolute()) {
-                localPath = runContext.workingDir().resolve(localPath);
-            }
-            return Files.readString(localPath);
+        } catch (IllegalArgumentException | IOException ignored) {
+            // fallthrough
         }
+
+        InputStream resource = RunPipeline.class.getClassLoader().getResourceAsStream(path);
+        if (resource != null) {
+            try (resource) {
+                return new String(resource.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+
+        Path localPath = Paths.get(path);
+        if (!localPath.isAbsolute()) {
+            localPath = runContext.workingDir().resolve(localPath);
+        }
+        return Files.readString(localPath);
     }
 
     private Class<? extends PipelineRunner<?>> resolveRunnerClass(BeamRunner runner) {

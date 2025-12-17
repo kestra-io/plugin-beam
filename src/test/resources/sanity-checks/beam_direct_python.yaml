@@ -14,3 +14,8 @@ tasks:
             config:
               elements: [1, 2, 3]
           - type: LogForTesting
+
+  - id: assert
+    type: io.kestra.plugin.core.execution.Assert
+    conditions:
+      - "{{ outputs.run_pipeline.state == 'FINISHED' }}"

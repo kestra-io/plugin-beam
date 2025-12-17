@@ -14,9 +14,16 @@ import static org.hamcrest.Matchers.is;
 class RunnerTest {
 
     @Test
-    @ExecuteFlow("flows/beam_direct_python.yaml")
+    @ExecuteFlow("sanity-checks/beam_direct_python.yaml")
     void beam_direct_python(Execution execution) {
-        assertThat(execution.getTaskRunList(), hasSize(1));
+        assertThat(execution.getTaskRunList(), hasSize(2));
+        assertThat(execution.getState().getCurrent(), is(State.Type.SUCCESS));
+    }
+
+    @Test
+    @ExecuteFlow(value = "sanity-checks/beam_flink_python.yaml", timeout = "PT5M")
+    void beam_flink_python(Execution execution) {
+        assertThat(execution.getTaskRunList(), hasSize(2));
         assertThat(execution.getState().getCurrent(), is(State.Type.SUCCESS));
     }
 }
