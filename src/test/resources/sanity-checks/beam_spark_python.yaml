@@ -1,0 +1,27 @@
+id: beam_spark_python
+namespace: company.team
+
+tasks:
+  - id: run_pipeline
+    type: io.kestra.plugin.beam.RunPipeline
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      privileged: true
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+    sdk: PYTHON
+    runner: SPARK
+    file: "pipelines/pipeline.yaml"
+    options:
+      spark_master: "http://localhost:7077"
+      environment_type: DOCKER
+      temp_location: "s3://my-bucket/tmp/"
+    runnerConfig:
+      master: "http://localhost:7077"
+    requirements:
+      - apache-beam[spark]==2.69.0
+
+  - id: assert
+    type: io.kestra.plugin.core.execution.Assert
+    conditions:
+      - "{{ outputs.run_pipeline.state == 'FINISHED' }}"

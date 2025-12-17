@@ -26,4 +26,11 @@ class RunnerTest {
         assertThat(execution.getTaskRunList(), hasSize(2));
         assertThat(execution.getState().getCurrent(), is(State.Type.SUCCESS));
     }
+
+    @Test
+    @ExecuteFlow(value = "sanity-checks/beam_spark_python.yaml", timeout = "PT5M")
+    void beam_spark_python(Execution execution) {
+        assertThat(execution.getTaskRunList(), hasSize(2));
+        assertThat(execution.getState().getCurrent(), is(State.Type.SUCCESS));
+    }
 }
