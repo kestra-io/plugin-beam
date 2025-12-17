@@ -1,3 +1,20 @@
+################################################################################
+# Description:
+#   Bootstrap the environment by spinning up Flink and Spark clusters using
+#   Docker Compose. This script ensures services are fully operational before
+#   returning control.
+#
+# Key Features:
+#   - Deploys services using 'docker-compose-ci.yml'.
+#   - Polling Mechanism: Waits up to 120s for Flink (port 56478) and Spark
+#     (port 56479) REST endpoints to be reachable.
+#   - Failure Handling: Detects premature container exits and dumps logs to
+#     stdout for debugging purposes.
+#
+# Usage:
+#   ./local-setup-unit.sh
+################################################################################
+
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -62,13 +79,13 @@ wait_for_spark() {
   return 1
 }
 
-echo "▶ Starting Flink & Spark (CI)"
+echo "▶ Starting Flink & Spark"
 $COMPOSE up -d --remove-orphans
 
-echo "▶ Show CI containers"
+echo "▶ Show containers"
 $COMPOSE ps
 
 wait_for_flink
 wait_for_spark
 
-echo "✔ CI services are ready"
+echo "✔ Services are ready"

@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://www.kestra.io">
-    <img src="https://kestra.io/banner.png"  alt="Kestra workflow orchestrator" />
+    <img src="https://kestra.io/banner.png" alt="Kestra workflow orchestrator" />
   </a>
 </p>
 
@@ -22,7 +22,7 @@
   <a href="https://twitter.com/kestra_io" style="margin: 0 10px;">
         <img height="25" src="https://kestra.io/twitter.svg" alt="twitter" width="35" height="25" /></a>
   <a href="https://www.linkedin.com/company/kestra/" style="margin: 0 10px;">
-        <img height="25" src="https://kestra.io/linkedin.svg" alt="linkedin" width="35" height="25" /></a> 
+        <img height="25" src="https://kestra.io/linkedin.svg" alt="linkedin" width="35" height="25" /></a>
   <a href="https://www.youtube.com/@kestra-io" style="margin: 0 10px;">
         <img height="25" src="https://kestra.io/youtube.svg" alt="youtube" width="35" height="25" /></a>
 </p>
@@ -35,17 +35,41 @@
 </p>
 <p align="center" style="color:grey;"><i>Get started with Kestra in 3 minutes.</i></p>
 
-
 # Kestra Apache Beam Plugin
 
-> A plugin to work with Apache Beam
+> A plugin to execute Apache Beam pipelines via Kestra.
+
+This plugin allows you to execute **Apache Beam YAML** pipelines directly from Kestra. It supports both **Java** and **Python** SDKs and can dispatch jobs to various runners including **Direct**, **Flink**, **Spark**, and **Google Cloud Dataflow**.
+
+Key features:
+* **Multi-Runner Support**: Switch between local execution (Direct) and distributed processing (Flink, Spark, Dataflow) by changing a simple property.
+* **Dual SDK**: Run pipelines using the Java SDK (embedded) or the Python SDK (via Docker/TaskRunner).
+* **Metrics Integration**: Automatically captures Beam Counters, Distributions, and Gauges and exposes them as Kestra metrics.
+* **Declarative Pipelines**: Define your Beam pipeline using the Beam YAML syntax inline or from a file.
 
 ![Kestra orchestrator](https://kestra.io/video.gif)
 
-## Running the project in local
+## Development
+
 ### Prerequisites
 - Java 21
 - Docker
+- Gradle
+
+### Local Development Infrastructure
+
+To test this plugin with distributed runners (Flink and Spark) locally, a helper script is provided to spin up the necessary infrastructure.
+
+**Starting the environment:**
+Run the following script to start Flink (JobManager/TaskManager) and Spark (Master/Worker) using Docker Compose. The script includes health checks to ensure services are fully ready before returning.
+
+```bash
+./local-setup-unit.sh
+```
+
+Accessing Services: Once the script completes, you can access the dashboards:
+- Flink Dashboard: http://localhost:56478
+- Spark Master UI: http://localhost:56479
 
 ### Running tests
 ```
