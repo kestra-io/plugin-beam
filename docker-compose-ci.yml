@@ -1,0 +1,69 @@
+services:
+  flink-jobmanager:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.flink
+    image: flink:1.19.3-scala_2.12-java17-docker
+    container_name: flink-jobmanager
+    network_mode: host
+    command: jobmanager
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: localhost
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: localhost
+        jobmanager.rpc.port: 6124
+        rest.port: 8082
+        blob.server.port: 6125
+        parallelism.default: 4
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8082/overview >/dev/null || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  flink-taskmanager:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.flink
+    image: flink:1.19.3-scala_2.12-java17-docker
+    container_name: flink-taskmanager
+    network_mode: host
+    command: >
+      bash -c "chmod 666 /var/run/docker.sock || true; /docker-entrypoint.sh taskmanager"
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: localhost
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: localhost
+        jobmanager.rpc.port: 6124
+        taskmanager.numberOfTaskSlots: 8
+        taskmanager.rpc.port: 6126
+        taskmanager.memory.process.size: 4g
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - label:disable
+      - apparmor:unconfined
+    user: "0:984" # Replace 984 by your docker group GID (ls -n /var/run/docker.sock)
+    group_add:
+      - "984"
+    privileged: true
+
+  beam-flink-jobserver:
+    image: apache/beam_flink1.18_job_server:latest
+    container_name: beam-flink-jobserver
+    network_mode: host
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+      flink-taskmanager:
+        condition: service_started
+    command:
+      - "--flink-master=localhost:8082"
+      - "--job-host=localhost"
+      - "--job-port=8099"
+      - "--artifact-port=8098"
+      - "--expansion-port=8097"

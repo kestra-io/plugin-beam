@@ -1,0 +1,21 @@
+id: beam_direct_python
+namespace: company.team
+
+tasks:
+  - id: run_pipeline
+    type: io.kestra.plugin.beam.RunPipeline
+    sdk: PYTHON
+    beamRunner: DIRECT
+    definition: |
+      pipeline:
+        type: chain
+        transforms:
+          - type: Create
+            config:
+              elements: [1, 2, 3]
+          - type: LogForTesting
+
+  - id: assert
+    type: io.kestra.plugin.core.execution.Assert
+    conditions:
+      - "{{ outputs.run_pipeline.vars.state == 'FINISHED' }}"

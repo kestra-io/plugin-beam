@@ -1,0 +1,16 @@
+FROM apache/spark:4.0.1-scala2.13-java21-python3-ubuntu
+
+USER root
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      docker.io \
+      python3-venv \
+      python3-pip \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN docker --version
+
+USER spark
