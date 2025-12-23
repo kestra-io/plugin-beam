@@ -91,18 +91,12 @@ tasks:
       include:
         - pipeline.yaml
     taskRunner:
-      type: io.kestra.plugin.scripts.runner.docker.Docker
-      privileged: true
-      networkMode: host
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-    containerImage: python:3.13-slim
+      type: io.kestra.plugin.core.runner.Process
     sdk: PYTHON
     beamRunner: SPARK
     file: "{{ outputs.write.uri }}"
     options:
-      spark_master: "spark://localhost:7077"
-      environment_type: DOCKER
+      environment_type: PROCESS
       temp_location: "s3://my-bucket/tmp/"
     runnerConfig:
       master: "spark://localhost:7077"

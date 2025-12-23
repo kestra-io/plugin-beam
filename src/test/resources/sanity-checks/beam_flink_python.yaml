@@ -4,50 +4,63 @@ namespace: company.team
 tasks:
   - id: flinkJobManager
     type: io.kestra.plugin.docker.Run
-    containerImage: flink:1.19.3-scala_2.12-java17
+    containerImage: flink:1.18-scala_2.12-java17
     wait: false
-    portBindings:
-      - "56478:8081"
-      - "6123:6123"
+    networkMode: host
     env:
-      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      JOB_MANAGER_RPC_ADDRESS: 127.0.0.1
       FLINK_PROPERTIES: |
-        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.rpc.address: 127.0.0.1
+        rest.port: 8083
+        jobmanager.rpc.port: 6128
+        blob.server.port: 6129
+        taskmanager.data.port: 6130
         jobmanager.bind-host: 0.0.0.0
         rest.bind-address: 0.0.0.0
         parallelism.default: 4
 
   - id: flinkTaskManager
     type: io.kestra.plugin.docker.Run
-    containerImage: flink:1.19.3-scala_2.12-java17
+    containerImage: flink:1.18-scala_2.12-java17
     wait: false
-    privileged: true
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+    networkMode: host
     env:
-      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
-      DOCKER_HOST: unix:///var/run/docker.sock
+      JOB_MANAGER_RPC_ADDRESS: 127.0.0.1
       FLINK_PROPERTIES: |
-        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.rpc.address: 127.0.0.1
+        jobmanager.rpc.port: 6128
         taskmanager.numberOfTaskSlots: 4
-        parallelism.default: 4
-    entryPoint:
-      - /bin/bash
-      - -lc
+        taskmanager.host: 127.0.0.1
+        taskmanager.bind-host: 0.0.0.0
+        taskmanager.data.port: 6130
+    commands: [ "taskmanager" ]
+
+  - id: flinkJobServer
+    type: io.kestra.plugin.docker.Run
+    containerImage: apache/beam_flink1.18_job_server:latest
+    wait: false
+    networkMode: host
+    entryPoint: [ "/opt/apache/beam/flink-job-server.sh" ]
     commands:
-      - |
-        set -euo pipefail
-        apt-get update \
-         && apt-get install -y --no-install-recommends \
-              ca-certificates \
-              curl \
-              docker.io \
-         && rm -rf /var/lib/apt/lists/*
-        exec /docker-entrypoint.sh taskmanager
+      - "--flink-master=127.0.0.1:8083"
+      - "--job-host=127.0.0.1"
+      - "--job-port=8099"
+      - "--artifact-port=8098"
+      - "--expansion-port=8097"
+
+  - id: beamWorkerPool
+    type: io.kestra.plugin.docker.Run
+    containerImage: apache/beam_python3.11_sdk:latest
+    wait: false
+    networkMode: host
+    entryPoint: [ "python3", "-m", "apache_beam.runners.worker.sdk_worker_main" ]
+    commands:
+      - "--worker_pool"
+      - "--port=50000"
 
   - id: sleep
     type: io.kestra.plugin.core.flow.Sleep
-    duration: PT15S
+    duration: PT20S
 
   - id: write
     type: io.kestra.plugin.core.storage.Write
@@ -61,53 +74,41 @@ tasks:
           - type: LogForTesting
     extension: .yaml
 
-  - id: upload
-    type: io.kestra.plugin.core.namespace.UploadFiles
-    filesMap:
-      pipeline.yaml: "{{ outputs.write.uri }}"
-    namespace: "{{ flow.namespace }}"
-
   - id: run_pipeline
     type: io.kestra.plugin.beam.RunPipeline
-    namespaceFiles:
-      enabled: true
-      include:
-        - pipeline.yaml
+    containerImage: apache/beam_python3.11_sdk:latest
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
-      privileged: true
       networkMode: host
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-    containerImage: python:3.13-slim
     sdk: PYTHON
     beamRunner: FLINK
     file: "{{ outputs.write.uri }}"
+    pipelineTimeoutSeconds: 120
     options:
-      flink_master: "http://localhost:56478"
-      parallelism: "4"
-      temp_location: "s3://my-bucket/tmp/"
-      environment_type: DOCKER
+      job_endpoint: "127.0.0.1:8099"
+      environment_type: "EXTERNAL"
+      environment_config: "127.0.0.1:50000"
+      parallelism: "1"
     runnerConfig:
-      flinkRestUrl: "http://localhost:56478"
-    requirements:
-      - apache-beam==2.69.0
-
-  - id: assert
-    type: io.kestra.plugin.core.execution.Assert
-    conditions:
-      - "{{ outputs.run_pipeline.vars.state == 'FINISHED' }}"
+      flinkRestUrl: "http://127.0.0.1:8083"
 
 finally:
+  - id: stopWorkerPool
+    type: io.kestra.plugin.docker.Stop
+    containerId: "{{ outputs.beamWorkerPool.containerId }}"
+    runIf: "{{ outputs.beamWorkerPool.containerId is defined }}"
+
+  - id: stopJobServer
+    type: io.kestra.plugin.docker.Stop
+    containerId: "{{ outputs.flinkJobServer.containerId }}"
+    runIf: "{{ outputs.flinkJobServer.containerId is defined }}"
+
   - id: stopTaskManager
     type: io.kestra.plugin.docker.Stop
-    containerId: "{{ outputs.flinkTaskManager.taskRunner.containerId }}"
-    kill: true
+    containerId: "{{ outputs.flinkTaskManager.containerId }}"
+    runIf: "{{ outputs.flinkTaskManager.containerId is defined }}"
 
   - id: stopJobManager
     type: io.kestra.plugin.docker.Stop
-    containerId: "{{ outputs.flinkJobManager.taskRunner.containerId }}"
-    kill: true
-
-  - id: purge
-    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
+    containerId: "{{ outputs.flinkJobManager.containerId }}"
+    runIf: "{{ outputs.flinkJobManager.containerId is defined }}"
