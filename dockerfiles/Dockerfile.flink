@@ -1,0 +1,20 @@
+FROM flink:1.19.3-scala_2.12-java17-docker
+
+USER root
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      docker.io \
+      python3 \
+      python3-pip \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+RUN python3 -m pip install --no-cache-dir --upgrade pip \
+ && python3 -m pip install --no-cache-dir apache-beam[yaml]==2.69.0
+
+# To be sure to be able (for the tests) to access to /var/run/docker.sock
+USER root
