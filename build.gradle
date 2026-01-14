@@ -1,5 +1,5 @@
 plugins {
-    id "com.vanniktech.maven.publish" version "0.34.0"
+    id "com.vanniktech.maven.publish" version "0.35.0"
     id "io.kestra.gradle.inject-bom-versions" version "1.0.0"
     id 'java-library'
     id "idea"
@@ -36,6 +36,11 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.add("-parameters")
 }
 
+configurations.configureEach {
+    exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.12"
+    exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.13"
+}
+
 dependencies {
     // Platform
     annotationProcessor enforcedPlatform("io.kestra:platform:$kestraVersion")
@@ -49,6 +54,16 @@ dependencies {
     annotationProcessor group: "io.kestra", name: "processor", version: kestraVersion
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
     compileOnly group: "io.kestra", name: "script", version: kestraVersion
+
+    // Apache Beam
+    implementation enforcedPlatform("org.apache.beam:beam-sdks-java-bom:$beamVersion")
+    implementation "org.apache.beam:beam-sdks-java-core"
+    implementation "org.apache.beam:beam-sdks-java-extensions-yaml"
+    implementation "org.apache.beam:beam-sdks-java-extensions-python"
+    implementation "org.apache.beam:beam-runners-direct-java"
+    implementation "org.apache.beam:beam-runners-flink-1.18"
+    implementation "org.apache.beam:beam-runners-spark-3"
+    implementation "org.apache.beam:beam-runners-google-cloud-dataflow-java"
 }
 
 
@@ -96,6 +111,9 @@ dependencies {
     testImplementation "org.junit.jupiter:junit-jupiter-engine"
     testImplementation "org.hamcrest:hamcrest"
     testImplementation "org.hamcrest:hamcrest-library"
+
+    // sanity checks
+    testImplementation "io.kestra.plugin:plugin-docker:1.2.1"
 }
 
 /**********************************************************************************************************************\
@@ -114,7 +132,7 @@ configurations {
 }
 
 dependencies {
-    agent "org.aspectj:aspectjweaver:1.9.25"
+    agent "org.aspectj:aspectjweaver:1.9.25.1"
 }
 
 test {
@@ -185,7 +203,9 @@ jar {
 
 shadowJar {
     archiveClassifier.set(null)
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE // important to have all META-INF/services files from Beam (ServiceLoader mechanism)
     mergeServiceFiles()
+    zip64 true
 }
 
 /**********************************************************************************************************************\

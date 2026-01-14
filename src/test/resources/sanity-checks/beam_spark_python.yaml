@@ -1,0 +1,123 @@
+id: beam_spark_python
+namespace: company.team
+
+tasks:
+  - id: sparkMaster
+    type: io.kestra.plugin.docker.Run
+    containerImage: apache/spark:4.0.1-scala2.13-java21-python3-ubuntu
+    wait: false
+    portBindings:
+      - "7077:7077"
+      - "56479:8080"
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    env:
+      SPARK_MODE: master
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+      SPARK_SSL_ENABLED: "no"
+      DOCKER_HOST: unix:///var/run/docker.sock
+    entryPoint:
+      - /bin/bash
+      - -lc
+    commands:
+      - |
+        set -euo pipefail
+        apt-get update \
+         && apt-get install -y --no-install-recommends \
+              ca-certificates \
+              curl \
+              docker.io \
+         && rm -rf /var/lib/apt/lists/*
+        exec /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+
+  - id: sparkWorker
+    type: io.kestra.plugin.docker.Run
+    containerImage: apache/spark:4.0.1-scala2.13-java21-python3-ubuntu
+    wait: false
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    env:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: "spark://localhost:7077"
+      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+      SPARK_RPC_ENCRYPTION_ENABLED: "no"
+      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+      SPARK_SSL_ENABLED: "no"
+      DOCKER_HOST: unix:///var/run/docker.sock
+    entryPoint:
+      - /bin/bash
+      - -lc
+    commands:
+      - |
+        set -euo pipefail
+        apt-get update \
+         && apt-get install -y --no-install-recommends \
+              ca-certificates \
+              curl \
+              docker.io \
+         && rm -rf /var/lib/apt/lists/*
+        exec /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://localhost:7077
+
+  - id: sleep
+    type: io.kestra.plugin.core.flow.Sleep
+    duration: PT15S
+
+  - id: write
+    type: io.kestra.plugin.core.storage.Write
+    content: |
+      pipeline:
+        type: chain
+        transforms:
+          - type: Create
+            config:
+              elements: [1, 2, 3]
+          - type: LogForTesting
+    extension: .yaml
+
+  - id: upload
+    type: io.kestra.plugin.core.namespace.UploadFiles
+    filesMap:
+      pipeline.yaml: "{{ outputs.write.uri }}"
+    namespace: "{{ flow.namespace }}"
+
+  - id: run_pipeline
+    type: io.kestra.plugin.beam.RunPipeline
+    namespaceFiles:
+      enabled: true
+      include:
+        - pipeline.yaml
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    sdk: PYTHON
+    beamRunner: SPARK
+    file: "{{ outputs.write.uri }}"
+    options:
+      environment_type: PROCESS
+      temp_location: "s3://my-bucket/tmp/"
+    runnerConfig:
+      master: "spark://localhost:7077"
+    requirements:
+      - apache-beam[spark]==2.69.0
+
+  - id: assert
+    type: io.kestra.plugin.core.execution.Assert
+    conditions:
+      - "{{ outputs.run_pipeline.vars.state == 'FINISHED' }}"
+
+finally:
+  - id: stopWorker
+    type: io.kestra.plugin.docker.Stop
+    containerId: "{{ outputs.sparkWorker.taskRunner.containerId }}"
+    kill: true
+
+  - id: stopMaster
+    type: io.kestra.plugin.docker.Stop
+    containerId: "{{ outputs.sparkMaster.taskRunner.containerId }}"
+    kill: true
+
+  - id: purge
+    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
