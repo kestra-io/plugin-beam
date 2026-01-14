@@ -43,9 +43,6 @@ public class FlinkRunnerConfig implements RunnerConfig {
         Map<String, Object> options = new LinkedHashMap<>();
 
         Optional.ofNullable(flinkRestUrl).ifPresent(url -> options.put("flink_master", url));
-//        if (!options.containsKey("flink_master")) {
-//            Optional.ofNullable(executionMode).ifPresent(mode -> options.put("flink_master", mode));
-//        }
         Optional.ofNullable(parallelism).ifPresent(value -> options.put("parallelism", value));
         Optional.ofNullable(savepointDir).ifPresent(value -> options.put("savepoint_path", value));
         Optional.ofNullable(stateBackend).ifPresent(value -> options.put("state_backend", value));
