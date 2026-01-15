@@ -1,7 +1,7 @@
 group: io.kestra.plugin.beam
 name: "beam"
 title: "Apache Beam"
-description: "Apache Beam Plugin for Kestra"
+description: "Tasks that run pipelines against SDKs and dedicated runners including Apache Flink"
 body: "Execute Apache Beam pipelines defined in YAML on Direct, Flink, Spark, or Dataflow runners while forwarding Beam metrics to Kestra."
 videos: []
 createdBy: "Kestra Core Team"
