@@ -68,6 +68,7 @@ import java.util.*;
         - **DOCKER**: The TaskManager (C) spawns a Sibling Container (D) via the Docker socket to run the Python SDK harness. Requires mounting `/var/run/docker.sock`.
         - **EXTERNAL**: The TaskManager (C) connects to a pre-existing worker pool (Container D) on a specific port (e.g., 50000).
         - **LOOPBACK**: The TaskManager (C) connects back to the original Kestra task process (Container A) to execute code locally, avoiding new container overhead.
+
         """
 )
 @Plugin(
