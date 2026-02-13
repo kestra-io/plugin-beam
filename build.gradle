@@ -45,6 +45,19 @@ dependencies {
     // Platform
     annotationProcessor enforcedPlatform("io.kestra:platform:$kestraVersion")
     implementation enforcedPlatform("io.kestra:platform:$kestraVersion")
+    constraints {
+        // Keep OpenTelemetry autoconfigure modules aligned with Kestra platform to avoid runtime NoSuchMethodError.
+        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.51.0") {
+            version {
+                strictly("1.51.0")
+            }
+        }
+        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.51.0") {
+            version {
+                strictly("1.51.0")
+            }
+        }
+    }
 
     // lombok
     annotationProcessor "org.projectlombok:lombok"
@@ -87,6 +100,19 @@ dependencies {
     // Platform
     testAnnotationProcessor enforcedPlatform("io.kestra:platform:$kestraVersion")
     testImplementation enforcedPlatform("io.kestra:platform:$kestraVersion")
+    constraints {
+        // Mirror the runtime alignment in test classpath.
+        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.51.0") {
+            version {
+                strictly("1.51.0")
+            }
+        }
+        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.51.0") {
+            version {
+                strictly("1.51.0")
+            }
+        }
+    }
 
     // lombok
     testAnnotationProcessor "org.projectlombok:lombok"

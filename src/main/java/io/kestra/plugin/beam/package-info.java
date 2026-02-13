@@ -1,5 +1,5 @@
 @PluginSubGroup(
-    categories = {PluginSubGroup.PluginCategory.TRANSFORMATION, PluginSubGroup.PluginCategory.BATCH, PluginSubGroup.PluginCategory.INGESTION},
+    categories = {PluginSubGroup.PluginCategory.DATA},
     description = "Run Apache Beam pipelines on Direct, Flink, Spark, or Dataflow runners.",
     title = "Apache Beam"
 )
