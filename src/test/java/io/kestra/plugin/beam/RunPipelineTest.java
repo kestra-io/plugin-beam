@@ -69,7 +69,7 @@ class RunPipelineTest {
         URI stored = runContext.storage().namespace().putFile(
             java.nio.file.Path.of("pipeline.yaml"),
             new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8))
-        ).uri();
+        ).getLast().uri();
 
         RunPipeline withFile = RunPipeline.builder()
             .id(configured.getId())
