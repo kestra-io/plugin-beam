@@ -47,12 +47,12 @@ dependencies {
     implementation enforcedPlatform("io.kestra:platform:$kestraVersion")
     constraints {
         // Keep OpenTelemetry autoconfigure modules aligned with Kestra platform to avoid runtime NoSuchMethodError.
-        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.51.0") {
+        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.59.0") {
             version {
                 strictly("1.51.0")
             }
         }
-        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.51.0") {
+        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.59.0") {
             version {
                 strictly("1.51.0")
             }
@@ -102,12 +102,12 @@ dependencies {
     testImplementation enforcedPlatform("io.kestra:platform:$kestraVersion")
     constraints {
         // Mirror the runtime alignment in test classpath.
-        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.51.0") {
+        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.59.0") {
             version {
                 strictly("1.51.0")
             }
         }
-        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.51.0") {
+        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.59.0") {
             version {
                 strictly("1.51.0")
             }
