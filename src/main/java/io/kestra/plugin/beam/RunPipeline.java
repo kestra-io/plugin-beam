@@ -1,23 +1,12 @@
 package io.kestra.plugin.beam;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Metric;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.executions.metrics.Counter;
-import io.kestra.core.models.executions.metrics.Timer;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.plugin.beam.config.*;
-import io.kestra.plugin.scripts.exec.AbstractExecScript;
-import io.kestra.plugin.scripts.exec.scripts.models.ScriptOutput;
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotNull;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+
 import org.apache.beam.runners.dataflow.DataflowRunner;
 import org.apache.beam.runners.direct.DirectRunner;
 import org.apache.beam.runners.flink.FlinkRunner;
@@ -32,12 +21,26 @@ import org.apache.beam.sdk.metrics.MetricsFilter;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 
-import java.io.InputStream;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Metric;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.executions.metrics.Counter;
+import io.kestra.core.models.executions.metrics.Timer;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.plugin.beam.config.*;
+import io.kestra.plugin.scripts.exec.AbstractExecScript;
+import io.kestra.plugin.scripts.exec.scripts.models.ScriptOutput;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @SuperBuilder
 @Getter
@@ -245,8 +248,10 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     }
 
     private ExecutionMode resolveExecutionMode(BeamSDK sdk, BeamRunner runner) {
-        if (sdk == BeamSDK.JAVA) return ExecutionMode.JAVA_CLASSIC;
-        if (runner == BeamRunner.DIRECT) return ExecutionMode.PYTHON_DIRECT;
+        if (sdk == BeamSDK.JAVA)
+            return ExecutionMode.JAVA_CLASSIC;
+        if (runner == BeamRunner.DIRECT)
+            return ExecutionMode.PYTHON_DIRECT;
         return ExecutionMode.PYTHON_PORTABLE;
     }
 
@@ -270,8 +275,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         String yaml,
         BeamRunner runner,
         Map<String, String> options,
-        RunnerConfigHolder runnerConfigHolder
-    ) {
+        RunnerConfigHolder runnerConfigHolder) {
 
         PipelineOptions po = PipelineOptionsFactory
             .fromArgs(buildOptionArgs(options, runnerConfigHolder.options()).toArray(String[]::new))
@@ -295,8 +299,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         String yaml,
         Map<String, String> options,
         RunnerConfigHolder runnerConfigHolder,
-        Integer pipelineTimeoutSeconds
-    ) throws Exception {
+        Integer pipelineTimeoutSeconds) throws Exception {
         Map<String, String> merged = new HashMap<>(options);
         runnerConfigHolder.options().forEach((k, v) -> merged.put(k, stringify(v)));
         // Portable => requires an externally managed JobServer
@@ -309,8 +312,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         String yaml,
         Map<String, String> options,
         boolean portable,
-        Integer pipelineTimeoutSeconds
-    ) throws Exception {
+        Integer pipelineTimeoutSeconds) throws Exception {
 
         Path yamlFile = runContext.workingDir().createFile(
             "pipeline.yaml",
@@ -325,7 +327,8 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         List<String> reqs = runContext.render(this.requirements).asList(String.class);
 
         if (!reqs.isEmpty()) {
-            runCommand(runContext, "pip", env,
+            runCommand(
+                runContext, "pip", env,
                 "python3 -m pip install --no-cache-dir --target " +
                     shellQuote(target.toString()) + " " + String.join(" ", reqs)
             );
@@ -425,8 +428,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
 
     private List<String> buildOptionArgs(
         Map<String, String> options,
-        Map<String, Object> runnerOptions
-    ) {
+        Map<String, Object> runnerOptions) {
         List<String> args = new ArrayList<>();
         options.forEach((k, v) -> args.add("--" + k + "=" + v));
         runnerOptions.forEach((k, v) -> args.add("--" + k + "=" + stringify(v)));
@@ -434,7 +436,8 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     }
 
     private String stringify(Object value) {
-        if (value instanceof String s) return s;
+        if (value instanceof String s)
+            return s;
         try {
             return JacksonMapper.ofJson().writeValueAsString(value);
         } catch (JsonProcessingException e) {

@@ -1,12 +1,13 @@
 package io.kestra.plugin.beam.config;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
 
 @Schema(title = "Spark runner configuration")
 @JsonIgnoreProperties(ignoreUnknown = true)
