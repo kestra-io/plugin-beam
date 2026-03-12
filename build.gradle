@@ -140,7 +140,7 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest-library"
 
     // sanity checks
-    testImplementation "io.kestra.plugin:plugin-docker:1.2.2"
+    testImplementation "io.kestra.plugin:plugin-docker:1.2.3"
 }
 
 /**********************************************************************************************************************\
