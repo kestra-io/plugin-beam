@@ -41,6 +41,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @Getter
@@ -156,9 +157,11 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     }
 
     @Schema(title = "Direct reference to a YAML pipeline file.")
+    @PluginProperty(group = "source")
     private Property<String> file;
 
     @Schema(title = "Inline YAML pipeline definition.")
+    @PluginProperty(group = "advanced")
     private Property<String> definition;
 
     @Schema(
@@ -171,6 +174,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "main")
     private Property<BeamSDK> sdk = Property.ofValue(BeamSDK.PYTHON);
 
     @Schema(
@@ -183,6 +187,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "main")
     private Property<BeamRunner> beamRunner = Property.ofValue(BeamRunner.DIRECT);
 
     @Schema(
@@ -197,22 +202,27 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             """
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Map<String, String>> options = Property.ofValue(Collections.emptyMap());
 
     @Schema(title = "Runner specific configuration.")
     @Builder.Default
+    @PluginProperty(group = "execution")
     private Property<Map<String, Object>> runnerConfig = Property.ofValue(Collections.emptyMap());
 
     @Schema(title = "Python requirements to install before running the pipeline when using the PYTHON SDK.")
     @Builder.Default
+    @PluginProperty(group = "execution")
     private Property<List<String>> requirements = Property.ofValue(Collections.emptyList());
 
     @Builder.Default
     @Schema(title = "The task runner container image, only used if the task runner is container-based.")
+    @PluginProperty(group = "execution")
     protected Property<String> containerImage = Property.ofValue(DEFAULT_IMAGE);
 
     @Schema(title = "The maximum duration to wait for the pipeline to finish in seconds.")
     @Builder.Default
+    @PluginProperty(group = "execution")
     private Property<Integer> pipelineTimeoutSeconds = Property.ofValue(300);
 
     @Override
