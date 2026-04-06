@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @Schema(title = "Spark runner configuration")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -19,12 +20,15 @@ import lombok.*;
 @EqualsAndHashCode
 public class SparkRunnerConfig implements RunnerConfig {
     @Schema(title = "Spark master URL (e.g. local[2], spark://spark-master:7077)")
+    @PluginProperty(group = "advanced")
     private String master;
 
     @Schema(title = "Optional jar to stage with the job")
+    @PluginProperty(group = "advanced")
     private String jarPath;
 
     @Schema(title = "Checkpoint directory for streaming workloads")
+    @PluginProperty(group = "advanced")
     private String checkpointDir;
 
     @Override
