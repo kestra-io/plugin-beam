@@ -2,11 +2,13 @@
 
 ## What
 
-description = 'Apache Beam Plugin for Kestra Exposes 1 plugin components (tasks, triggers, and/or conditions).
+- Provides plugin components under `io.kestra.plugin.beam`.
+- Includes classes such as `RunPipeline`, `BeamSDK`, `BeamRunner`, `DataflowRunnerConfig`.
 
 ## Why
 
-Enables Kestra workflows to interact with Apache Beam, allowing orchestration of Apache Beam-based operations as part of data pipelines and automation workflows.
+- This plugin integrates Kestra with Apache Beam.
+- It provides tasks that run pipelines against SDKs and dedicated runners including Apache Flink.
 
 ## How
 
@@ -36,24 +38,7 @@ plugin-beam/
 └── README.md
 ```
 
-### Important Commands
+## References
 
-```bash
-# Build the plugin
-./gradlew shadowJar
-
-# Run tests
-./gradlew test
-
-# Build without tests
-./gradlew shadowJar -x test
-```
-
-### Configuration
-
-All tasks and triggers accept standard Kestra plugin properties. Credentials should use
-`{{ secret('SECRET_NAME') }}` — never hardcode real values.
-
-## Agents
-
-**IMPORTANT:** This is a Kestra plugin repository (prefixed by `plugin-`, `storage-`, or `secret-`). You **MUST** delegate all coding tasks to the `kestra-plugin-developer` agent. Do NOT implement code changes directly — always use this agent.
+- https://kestra.io/docs/plugin-developer-guide
+- https://kestra.io/docs/plugin-developer-guide/contribution-guidelines
