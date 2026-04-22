@@ -41,7 +41,7 @@ public class DataflowRunnerConfig implements RunnerConfig {
     private String stagingLocation;
 
     @Schema(title = "Path to a service account key file used for authentication")
-    @PluginProperty(group = "connection")
+    @PluginProperty(group = "connection", secret = true)
     private String serviceAccountKey;
 
     @Schema(title = "Whether the job should update an existing pipeline with the same name")
