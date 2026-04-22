@@ -330,24 +330,18 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         );
 
         Map<String, String> env = new HashMap<>();
-        Path target = Paths.get("/tmp/beam-py-" + UUID.randomUUID());
-
-        runCommand(runContext, "mkdir", env, "mkdir -p " + shellQuote(target.toString()));
-
         List<String> reqs = runContext.render(this.requirements).asList(String.class);
 
+        String prelude = "";
         if (!reqs.isEmpty()) {
-            runCommand(
-                runContext, "pip", env,
-                "python3 -m pip install --no-cache-dir --target " +
-                    shellQuote(target.toString()) + " " + String.join(" ", reqs)
-            );
+            Path target = Paths.get("/tmp/beam-py-" + UUID.randomUUID());
+            prelude = "mkdir -p " + shellQuote(target.toString())
+                + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " " + String.join(" ", reqs)
+                + " && ";
             env.put("PYTHONPATH", target.toString());
         } else {
             runContext.logger().info("Using Beam SDK pre-installed in the container image.");
         }
-
-        env.put("PYTHONPATH", target.toString());
 
         List<String> runPipelineOverPythonCmd = new ArrayList<>();
         runPipelineOverPythonCmd.add("python3 -m apache_beam.yaml.main");
@@ -366,7 +360,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
 
         runPipelineOverPythonCmd.addAll(buildOptionArgs(options, Map.of()));
 
-        String finalCmd = "timeout --signal=TERM " + pipelineTimeoutSeconds + " " + String.join(" ", runPipelineOverPythonCmd) + "; rc=$?; " +
+        String finalCmd = prelude + "timeout --signal=TERM " + pipelineTimeoutSeconds + " " + String.join(" ", runPipelineOverPythonCmd) + "; rc=$?; " +
             "if [ $rc -eq 0 ]; then echo ''; echo '::{\"outputs\":{\"state\":\"FINISHED\"}}::'; exit 0; " +
             "elif [ $rc -eq 124 ]; then echo ''; echo '::{\"outputs\":{\"state\":\"TIMEOUT\"}}::' >&2; exit 124; " +
             "else exit $rc; fi";
