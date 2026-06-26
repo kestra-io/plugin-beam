@@ -101,6 +101,7 @@ import io.kestra.core.models.annotations.PluginProperty;
         ),
         @Example(
             title = "Flink runner with Python SDK (portable, DOCKER)",
+            full = true,
             code = """
                 id: beam_flink_python
                 namespace: company.team
@@ -156,16 +157,16 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         PYTHON_PORTABLE
     }
 
-    @Schema(title = "Direct reference to a YAML pipeline file.")
+    @Schema(title = "Direct reference to a YAML pipeline file")
     @PluginProperty(group = "source")
     private Property<String> file;
 
-    @Schema(title = "Inline YAML pipeline definition.")
+    @Schema(title = "Inline YAML pipeline definition")
     @PluginProperty(group = "advanced")
     private Property<String> definition;
 
     @Schema(
-        title = "Beam SDK to use for the pipeline.",
+        title = "Beam SDK to use for the pipeline",
         description = """
             Determines the execution environment.
             - **PYTHON**: Uses the Beam Python SDK. Supports Beam YAML pipelines. Requires a portable runner (like Flink or Spark) for distributed execution.
@@ -178,7 +179,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     private Property<BeamSDK> sdk = Property.ofValue(BeamSDK.PYTHON);
 
     @Schema(
-        title = "Beam runner to execute the job.",
+        title = "Beam runner to execute the job",
         description = """
             The execution engine that will run your pipeline.
             - **DIRECT**: Runs the pipeline locally inside the Kestra task container. Best for development or small datasets.
@@ -191,7 +192,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     private Property<BeamRunner> beamRunner = Property.ofValue(BeamRunner.DIRECT);
 
     @Schema(
-        title = "Generic Beam pipeline options.",
+        title = "Generic Beam pipeline options",
         description = """
             A map of key-value pairs passed directly to the Beam Pipeline Options.
             Common options include:
@@ -205,22 +206,22 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     @PluginProperty(group = "advanced")
     private Property<Map<String, String>> options = Property.ofValue(Collections.emptyMap());
 
-    @Schema(title = "Runner specific configuration.")
+    @Schema(title = "Runner specific configuration")
     @Builder.Default
     @PluginProperty(group = "execution")
     private Property<Map<String, Object>> runnerConfig = Property.ofValue(Collections.emptyMap());
 
-    @Schema(title = "Python requirements to install before running the pipeline when using the PYTHON SDK.")
+    @Schema(title = "Python requirements to install before running the pipeline when using the PYTHON SDK")
     @Builder.Default
     @PluginProperty(group = "execution")
     private Property<List<String>> requirements = Property.ofValue(Collections.emptyList());
 
     @Builder.Default
-    @Schema(title = "The task runner container image, only used if the task runner is container-based.")
+    @Schema(title = "The task runner container image, only used if the task runner is container-based")
     @PluginProperty(group = "execution")
     protected Property<String> containerImage = Property.ofValue(DEFAULT_IMAGE);
 
-    @Schema(title = "The maximum duration to wait for the pipeline to finish in seconds.")
+    @Schema(title = "The maximum duration to wait for the pipeline to finish in seconds")
     @Builder.Default
     @PluginProperty(group = "execution")
     private Property<Integer> pipelineTimeoutSeconds = Property.ofValue(300);
