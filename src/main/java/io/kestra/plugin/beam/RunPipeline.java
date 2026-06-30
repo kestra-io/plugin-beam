@@ -337,7 +337,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         if (!reqs.isEmpty()) {
             Path target = Paths.get("/tmp/beam-py-" + UUID.randomUUID());
             prelude = "mkdir -p " + shellQuote(target.toString())
-                + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " " + String.join(" ", reqs)
+                + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " " + reqs.stream().map(this::shellQuote).collect(java.util.stream.Collectors.joining(" "))
                 + " && ";
             env.put("PYTHONPATH", target.toString());
         } else {
@@ -435,8 +435,8 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         Map<String, String> options,
         Map<String, Object> runnerOptions) {
         List<String> args = new ArrayList<>();
-        options.forEach((k, v) -> args.add("--" + k + "=" + v));
-        runnerOptions.forEach((k, v) -> args.add("--" + k + "=" + stringify(v)));
+        options.forEach((k, v) -> args.add("--" + k + "=" + shellQuote(v)));
+        runnerOptions.forEach((k, v) -> args.add("--" + k + "=" + shellQuote(stringify(v))));
         return args;
     }
 
