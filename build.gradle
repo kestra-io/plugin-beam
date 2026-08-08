@@ -10,7 +10,7 @@ plugins {
     id "com.adarshr.test-logger" version "4.0.0"
     id "com.gradleup.shadow" version "9.6.1"
     id 'signing'
-    id "com.github.ben-manes.versions" version "0.56.0"
+    id "com.github.ben-manes.versions" version "0.60.0"
     id 'net.researchgate.release' version '3.1.0'
 }
 
@@ -50,12 +50,12 @@ dependencies {
     implementation enforcedPlatform("io.kestra:platform:$kestraVersion")
     constraints {
         // Keep OpenTelemetry autoconfigure modules aligned with Kestra platform to avoid runtime NoSuchMethodError.
-        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.64.0") {
+        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.63.0") {
             version {
                 strictly("1.51.0")
             }
         }
-        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.64.0") {
+        implementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.63.0") {
             version {
                 strictly("1.51.0")
             }
@@ -105,12 +105,12 @@ dependencies {
     testImplementation enforcedPlatform("io.kestra:platform:$kestraVersion")
     constraints {
         // Mirror the runtime alignment in test classpath.
-        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.64.0") {
+        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure:1.63.0") {
             version {
                 strictly("1.51.0")
             }
         }
-        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.64.0") {
+        testImplementation("io.opentelemetry:opentelemetry-sdk-extension-autoconfigure-spi:1.63.0") {
             version {
                 strictly("1.51.0")
             }
@@ -142,7 +142,7 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest-library"
 
     // sanity checks
-    testImplementation "io.kestra.plugin:plugin-docker:1.5.2"
+    testImplementation "io.kestra.plugin:plugin-docker:1.5.1"
 }
 
 /**********************************************************************************************************************\
