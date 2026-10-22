@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Metric;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.executions.metrics.Counter;
 import io.kestra.core.models.executions.metrics.Timer;
 import io.kestra.core.models.property.Property;
@@ -41,7 +42,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @Getter
@@ -293,6 +293,9 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             .withValidation()
             .create();
 
+        if (runnerConfigHolder.config() != null) {
+            runnerConfigHolder.config().applyTo(po);
+        }
         po.setRunner(resolveRunnerClass(runner));
 
         Pipeline p = Pipeline.create(po);
@@ -311,6 +314,9 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         Map<String, String> options,
         RunnerConfigHolder runnerConfigHolder,
         Integer pipelineTimeoutSeconds) throws Exception {
+        if (runnerConfigHolder.config() instanceof DataflowRunnerConfig dataflow && dataflow.getServiceAccountKey() != null) {
+            runContext.logger().warn("`runnerConfig.serviceAccountKey` is only applied when `sdk` is `JAVA`; it is ignored for the Python SDK.");
+        }
         Map<String, String> merged = new HashMap<>(options);
         runnerConfigHolder.options().forEach((k, v) -> merged.put(k, stringify(v)));
         // Portable => requires an externally managed JobServer
@@ -337,7 +343,8 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         if (!reqs.isEmpty()) {
             Path target = Paths.get("/tmp/beam-py-" + UUID.randomUUID());
             prelude = "mkdir -p " + shellQuote(target.toString())
-                + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " " + reqs.stream().map(this::shellQuote).collect(java.util.stream.Collectors.joining(" "))
+                + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " "
+                + reqs.stream().map(this::shellQuote).collect(java.util.stream.Collectors.joining(" "))
                 + " && ";
             env.put("PYTHONPATH", target.toString());
         } else {
