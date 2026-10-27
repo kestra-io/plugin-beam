@@ -1,5 +1,5 @@
 id: beam_direct_python
-namespace: company.team
+namespace: sanitychecks.plugin-beam
 
 tasks:
   - id: run_pipeline
