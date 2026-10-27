@@ -1,0 +1,15 @@
+id: all_beam
+namespace: sanitychecks.plugin-beam
+
+tasks:
+  - id: loop
+    type: io.kestra.plugin.core.flow.Loop
+    values:
+      - beam_direct_python
+      # beam_flink_python runs 4 containers for a portable Flink cluster, too heavy for the daily run.
+      # beam_spark_python needs a real S3 temp_location.
+    tasks:
+      - id: subflow
+        type: io.kestra.plugin.core.flow.Subflow
+        flowId: "{{ item.value }}"
+        namespace: "{{ flow.namespace }}"
