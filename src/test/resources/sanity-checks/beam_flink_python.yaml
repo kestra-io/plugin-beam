@@ -1,5 +1,5 @@
 id: beam_flink_python
-namespace: company.team
+namespace: sanitychecks.plugin-beam
 
 tasks:
   - id: flinkJobManager
