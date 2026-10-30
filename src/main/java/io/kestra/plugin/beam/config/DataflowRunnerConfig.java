@@ -2,10 +2,7 @@ package io.kestra.plugin.beam.config;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -53,8 +50,10 @@ public class DataflowRunnerConfig implements RunnerConfig {
 
     @Schema(
         title = "Service account key used to authenticate with Google Cloud",
-        description = "The service account key JSON, or a path to a key file readable by the Kestra worker. " +
-            "It is used as the Beam `gcpCredential` when `sdk` is `JAVA`."
+        description = """
+            The service account key JSON, for example `{{ secret('GCP_SERVICE_ACCOUNT') }}`.
+            It is used as the Beam `gcpCredential` when `sdk` is `JAVA`.
+            """
     )
     @PluginProperty(group = "connection", secret = true)
     @ToString.Exclude
@@ -103,23 +102,17 @@ public class DataflowRunnerConfig implements RunnerConfig {
             return;
         }
 
-        // Beam has no option for a key file: the credential must be set as an object.
-        // Scope it like Beam's default GcpCredentialFactory does.
-        GcpOptions gcpOptions = options.as(GcpOptions.class);
+        // Beam has no key option; scope the credential like GcpCredentialFactory.
+        var gcpOptions = options.as(GcpOptions.class);
         gcpOptions.setGcpCredential(loadServiceAccountKey().createScoped(gcpOptions.getGcpOauthScopes()));
     }
 
     private ServiceAccountCredentials loadServiceAccountKey() {
-        String key = serviceAccountKey.trim();
-        try (
-            InputStream in = key.startsWith("{")
-                ? new ByteArrayInputStream(key.getBytes(StandardCharsets.UTF_8))
-                : Files.newInputStream(Path.of(key))
-        ) {
+        try (var in = new ByteArrayInputStream(serviceAccountKey.getBytes(StandardCharsets.UTF_8))) {
             return ServiceAccountCredentials.fromStream(in);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             throw new IllegalArgumentException(
-                "Unable to load the Dataflow `serviceAccountKey`: set it to the service account key JSON or to the path of a readable key file.", e
+                "Unable to load the Dataflow `serviceAccountKey`: set it to the service account key JSON, for example `{{ secret('GCP_SERVICE_ACCOUNT') }}`.", e
             );
         }
     }

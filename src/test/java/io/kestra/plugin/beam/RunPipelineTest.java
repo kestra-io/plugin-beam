@@ -15,6 +15,7 @@ import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
 import io.kestra.plugin.beam.config.RunnerConfigHolder;
 
@@ -151,20 +152,20 @@ class RunPipelineTest {
 
     @Test
     void shouldApplyDataflowServiceAccountKeyWithJavaSdk() {
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .beamRunner(Property.ofValue(BeamRunner.DATAFLOW))
             .sdk(Property.ofValue(BeamSDK.JAVA))
             .definition(Property.ofValue("pipeline: {}"))
-            .runnerConfig(Property.ofValue(Map.of("projectId", "p", "serviceAccountKey", "/does/not/exist.json")))
+            .runnerConfig(Property.ofValue(Map.of("projectId", "p", "serviceAccountKey", "not-a-key")))
             .build();
 
-        Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        RunContext runContext = runContextFactory.of(flow, task, execution, TestsUtils.mockTaskRun(execution, task));
+        var flow = TestsUtils.mockFlow();
+        var execution = TestsUtils.mockExecution(flow, Map.of());
+        var runContext = runContextFactory.of(flow, task, execution, TestsUtils.mockTaskRun(execution, task));
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> task.run(runContext));
+        var exception = assertThrows(IllegalArgumentException.class, () -> task.run(runContext));
         assertTrue(exception.getMessage().contains("serviceAccountKey"));
     }
 

@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import org.apache.beam.runners.dataflow.DataflowRunner;
 import org.apache.beam.runners.direct.DirectRunner;
@@ -289,7 +290,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         RunnerConfigHolder runnerConfigHolder) {
 
         PipelineOptions po = PipelineOptionsFactory
-            .fromArgs(buildOptionArgs(options, runnerConfigHolder.options()).toArray(String[]::new))
+            .fromArgs(buildOptionArgs(options, javaRunnerOptions(runnerConfigHolder)).toArray(String[]::new))
             .withValidation()
             .create();
 
@@ -344,7 +345,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             Path target = Paths.get("/tmp/beam-py-" + UUID.randomUUID());
             prelude = "mkdir -p " + shellQuote(target.toString())
                 + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " "
-                + reqs.stream().map(this::shellQuote).collect(java.util.stream.Collectors.joining(" "))
+                + reqs.stream().map(this::shellQuote).collect(Collectors.joining(" "))
                 + " && ";
             env.put("PYTHONPATH", target.toString());
         } else {
@@ -445,6 +446,10 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         options.forEach((k, v) -> args.add("--" + k + "=" + shellQuote(v)));
         runnerOptions.forEach((k, v) -> args.add("--" + k + "=" + shellQuote(stringify(v))));
         return args;
+    }
+
+    private Map<String, Object> javaRunnerOptions(RunnerConfigHolder runnerConfigHolder) {
+        return runnerConfigHolder.config() == null ? runnerConfigHolder.options() : runnerConfigHolder.config().toJavaPipelineOptions();
     }
 
     private String stringify(Object value) {

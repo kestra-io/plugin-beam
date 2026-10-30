@@ -7,7 +7,6 @@ import java.util.Base64;
 import java.util.Map;
 
 import org.apache.beam.sdk.extensions.gcp.options.GcpOptions;
-import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,51 +26,48 @@ class DataflowRunnerConfigTest {
 
     @Test
     void shouldUseServiceAccountKeyJsonAsGcpCredential() throws Exception {
-        DataflowRunnerConfig config = DataflowRunnerConfig.builder()
+        var config = DataflowRunnerConfig.builder()
             .projectId("my-project")
             .serviceAccountKey(serviceAccountKeyJson())
             .build();
 
-        GcpOptions options = applyTo(config);
+        var options = applyTo(config);
 
         assertThat(options.getGcpCredential(), instanceOf(ServiceAccountCredentials.class));
-        ServiceAccountCredentials credential = (ServiceAccountCredentials) options.getGcpCredential();
+        var credential = (ServiceAccountCredentials) options.getGcpCredential();
         assertThat(credential.getClientEmail(), is(CLIENT_EMAIL));
         assertThat(credential.getScopes(), containsInAnyOrder(options.getGcpOauthScopes().toArray()));
     }
 
     @Test
-    void shouldUseServiceAccountKeyFileAsGcpCredential(@TempDir Path tempDir) throws Exception {
-        Path keyFile = Files.writeString(tempDir.resolve("sa.json"), serviceAccountKeyJson());
-        DataflowRunnerConfig config = DataflowRunnerConfig.builder()
-            .projectId("my-project")
+    void shouldRejectServiceAccountKeyFilePath(@TempDir Path tempDir) throws Exception {
+        var keyFile = Files.writeString(tempDir.resolve("sa.json"), serviceAccountKeyJson());
+        var config = DataflowRunnerConfig.builder()
             .serviceAccountKey(keyFile.toString())
             .build();
 
-        GcpOptions options = applyTo(config);
-
-        assertThat(((ServiceAccountCredentials) options.getGcpCredential()).getClientEmail(), is(CLIENT_EMAIL));
+        assertThrows(IllegalArgumentException.class, () -> applyTo(config));
     }
 
     @Test
-    void shouldFailWhenServiceAccountKeyFileIsMissing(@TempDir Path tempDir) {
-        DataflowRunnerConfig config = DataflowRunnerConfig.builder()
-            .serviceAccountKey(tempDir.resolve("missing.json").toString())
+    void shouldFailWhenServiceAccountKeyIsInvalid() {
+        var config = DataflowRunnerConfig.builder()
+            .serviceAccountKey("{\"type\": \"service_account\"}")
             .build();
 
         assertThrows(IllegalArgumentException.class, () -> applyTo(config));
     }
 
     private static GcpOptions applyTo(DataflowRunnerConfig config) {
-        PipelineOptions options = PipelineOptionsFactory.create();
+        var options = PipelineOptionsFactory.create();
         config.applyTo(options);
         return options.as(GcpOptions.class);
     }
 
     private static String serviceAccountKeyJson() throws Exception {
-        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        var generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
-        String privateKey = "-----BEGIN PRIVATE KEY-----\n"
+        var privateKey = "-----BEGIN PRIVATE KEY-----\n"
             + Base64.getMimeEncoder().encodeToString(generator.generateKeyPair().getPrivate().getEncoded())
             + "\n-----END PRIVATE KEY-----\n";
 
