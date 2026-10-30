@@ -1,10 +1,19 @@
 package io.kestra.plugin.beam.config;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import org.apache.beam.sdk.extensions.gcp.options.GcpOptions;
+import org.apache.beam.sdk.options.PipelineOptions;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.google.auth.oauth2.ServiceAccountCredentials;
+
+import io.kestra.core.models.annotations.PluginProperty;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
@@ -13,7 +22,6 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @Schema(title = "Dataflow runner configuration")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -40,7 +48,13 @@ public class DataflowRunnerConfig implements RunnerConfig {
     @PluginProperty(group = "advanced")
     private String stagingLocation;
 
-    @Schema(title = "Path to a service account key file used for authentication")
+    @Schema(
+        title = "Service account key used to authenticate with Google Cloud",
+        description = """
+            The service account key JSON, for example `{{ secret('GCP_SERVICE_ACCOUNT') }}`.
+            It is used as the Beam `gcpCredential` when `sdk` is `JAVA`.
+            """
+    )
     @PluginProperty(group = "connection", secret = true)
     @ToString.Exclude
     private String serviceAccountKey;
@@ -80,5 +94,26 @@ public class DataflowRunnerConfig implements RunnerConfig {
         Optional.ofNullable(subnetwork).ifPresent(value -> options.put("subnetwork", value));
 
         return options;
+    }
+
+    @Override
+    public void applyTo(PipelineOptions options) {
+        if (serviceAccountKey == null || serviceAccountKey.isBlank()) {
+            return;
+        }
+
+        // Beam has no key option; scope the credential like GcpCredentialFactory.
+        var gcpOptions = options.as(GcpOptions.class);
+        gcpOptions.setGcpCredential(loadServiceAccountKey().createScoped(gcpOptions.getGcpOauthScopes()));
+    }
+
+    private ServiceAccountCredentials loadServiceAccountKey() {
+        try (var in = new ByteArrayInputStream(serviceAccountKey.getBytes(StandardCharsets.UTF_8))) {
+            return ServiceAccountCredentials.fromStream(in);
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalArgumentException(
+                "Unable to load the Dataflow `serviceAccountKey`: set it to the service account key JSON, for example `{{ secret('GCP_SERVICE_ACCOUNT') }}`.", e
+            );
+        }
     }
 }

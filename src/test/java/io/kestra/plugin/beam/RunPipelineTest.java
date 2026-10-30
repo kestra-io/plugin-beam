@@ -15,6 +15,7 @@ import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
 import io.kestra.plugin.beam.config.RunnerConfigHolder;
 
@@ -22,6 +23,7 @@ import jakarta.inject.Inject;
 import jakarta.validation.Validator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @KestraTest
@@ -146,6 +148,25 @@ class RunPipelineTest {
             BeamRunner.DATAFLOW
         );
         assertTrue(dataflowHolder.config() != null);
+    }
+
+    @Test
+    void shouldApplyDataflowServiceAccountKeyWithJavaSdk() {
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
+            .type(RunPipeline.class.getName())
+            .beamRunner(Property.ofValue(BeamRunner.DATAFLOW))
+            .sdk(Property.ofValue(BeamSDK.JAVA))
+            .definition(Property.ofValue("pipeline: {}"))
+            .runnerConfig(Property.ofValue(Map.of("projectId", "p", "serviceAccountKey", "not-a-key")))
+            .build();
+
+        var flow = TestsUtils.mockFlow();
+        var execution = TestsUtils.mockExecution(flow, Map.of());
+        var runContext = runContextFactory.of(flow, task, execution, TestsUtils.mockTaskRun(execution, task));
+
+        var exception = assertThrows(IllegalArgumentException.class, () -> task.run(runContext));
+        assertTrue(exception.getMessage().contains("serviceAccountKey"));
     }
 
     private Object invokePrivate(Object target, String method, Object... args) throws Exception {

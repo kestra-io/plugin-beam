@@ -4,11 +4,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import org.apache.beam.runners.flink.FlinkPipelineOptions;
+import org.apache.beam.sdk.options.PipelineOptions;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import io.kestra.core.models.annotations.PluginProperty;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @Schema(title = "Flink runner configuration")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -19,7 +23,12 @@ import io.kestra.core.models.annotations.PluginProperty;
 @ToString
 @EqualsAndHashCode
 public class FlinkRunnerConfig implements RunnerConfig {
-    @Schema(title = "Execution mode or master endpoint (e.g. [local], [auto], host:port)")
+    @Schema(
+        title = "Execution mode or master endpoint (e.g. [local], [auto], host:port)",
+        description = """
+            Sets the Beam Flink master, like `flinkRestUrl`. Set only one of the two.
+            """
+    )
     @PluginProperty(group = "advanced")
     private String executionMode;
 
@@ -49,9 +58,19 @@ public class FlinkRunnerConfig implements RunnerConfig {
 
     @Override
     public Map<String, Object> toPipelineOptions() {
-        Map<String, Object> options = new LinkedHashMap<>();
+        var options = new LinkedHashMap<String, Object>();
 
-        Optional.ofNullable(flinkRestUrl).ifPresent(url -> options.put("flink_master", url));
+        flinkMaster().ifPresent(value -> options.put("flink_master", value));
+        options.putAll(toJavaPipelineOptions());
+
+        return options;
+    }
+
+    // The Java SDK gets the Flink master in applyTo, as its arg parser only knows `flinkMaster`.
+    @Override
+    public Map<String, Object> toJavaPipelineOptions() {
+        var options = new LinkedHashMap<String, Object>();
+
         Optional.ofNullable(parallelism).ifPresent(value -> options.put("parallelism", value));
         Optional.ofNullable(savepointDir).ifPresent(value -> options.put("savepoint_path", value));
         Optional.ofNullable(stateBackend).ifPresent(value -> options.put("state_backend", value));
@@ -59,5 +78,20 @@ public class FlinkRunnerConfig implements RunnerConfig {
         Optional.ofNullable(jarPath).ifPresent(value -> options.put("files_to_stage", value));
 
         return options;
+    }
+
+    @Override
+    public void applyTo(PipelineOptions options) {
+        flinkMaster().ifPresent(value -> options.as(FlinkPipelineOptions.class).setFlinkMaster(value));
+    }
+
+    private Optional<String> flinkMaster() {
+        if (executionMode != null && flinkRestUrl != null) {
+            throw new IllegalArgumentException(
+                "Set either `executionMode` or `flinkRestUrl` in the Flink `runnerConfig`, not both: they both set the Beam Flink master."
+            );
+        }
+
+        return Optional.ofNullable(flinkRestUrl).or(() -> Optional.ofNullable(executionMode));
     }
 }
