@@ -38,6 +38,13 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 configurations.configureEach {
+    // Security pin (jackson-databind / jackson-core CVEs): remove once the Kestra platform BOM bumps Jackson to 2.21.7+.
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == "com.fasterxml.jackson.core" && ["jackson-databind", "jackson-core"].contains(details.requested.name)) {
+            details.useVersion("2.21.7")
+            details.because("jackson-databind and jackson-core security fixes")
+        }
+    }
     exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.12"
     exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.13"
 }
