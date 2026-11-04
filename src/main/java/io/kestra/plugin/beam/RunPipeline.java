@@ -253,11 +253,24 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             sdk, runner, mode
         );
 
+        if (mode == ExecutionMode.JAVA_CLASSIC) {
+            warnIgnoredScriptProperties(runContext);
+        }
+
         return switch (mode) {
             case JAVA_CLASSIC -> runJava(runContext, yaml, runner, opts, cfg);
             case PYTHON_DIRECT -> runPythonCli(runContext, yaml, opts, false, rPipelineTimeoutSeconds);
             case PYTHON_PORTABLE -> runPythonPortable(runContext, yaml, opts, cfg, rPipelineTimeoutSeconds);
         };
+    }
+
+    void warnIgnoredScriptProperties(RunContext runContext) throws Exception {
+        if (!runContext.render(this.getEnv()).asMap(String.class, String.class).isEmpty()) {
+            runContext.logger().warn("`env` is only applied when `sdk` is `PYTHON`; it is ignored for the Java SDK, which runs in-process.");
+        }
+        if (!runContext.render(this.beforeCommands).asList(String.class).isEmpty()) {
+            runContext.logger().warn("`beforeCommands` is only applied when `sdk` is `PYTHON`; it is ignored for the Java SDK, which runs in-process.");
+        }
     }
 
     private ExecutionMode resolveExecutionMode(BeamSDK sdk, BeamRunner runner) {
@@ -370,10 +383,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
 
         runPipelineOverPythonCmd.addAll(buildOptionArgs(options, Map.of()));
 
-        String finalCmd = prelude + "timeout --signal=TERM " + pipelineTimeoutSeconds + " " + String.join(" ", runPipelineOverPythonCmd) + "; rc=$?; " +
-            "if [ $rc -eq 0 ]; then echo ''; echo '::{\"outputs\":{\"state\":\"FINISHED\"}}::'; exit 0; " +
-            "elif [ $rc -eq 124 ]; then echo ''; echo '::{\"outputs\":{\"state\":\"TIMEOUT\"}}::' >&2; exit 124; " +
-            "else exit $rc; fi";
+        String finalCmd = pipelineScript(prelude, pipelineTimeoutSeconds, String.join(" ", runPipelineOverPythonCmd));
 
         return runCommandReturnOutput(runContext, "beam-python", env, finalCmd);
     }
@@ -399,29 +409,44 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             : new RunnerConfigHolder(rc.toPipelineOptions(), rc);
     }
 
-    private void runCommand(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
-        ScriptOutput out = runCommandReturnOutput(runContext, label, env, command);
-        if (out.getExitCode() != 0) {
-            throw new IllegalStateException("Command failed: " + label);
-        }
+    /**
+     * Wraps the pipeline command so that the final state is always reported.
+     * <p>
+     * The wrapper runs with {@code set -e} when {@code failFast} is on. The exit code of the pipeline command is
+     * therefore captured with {@code || rc=$?}: a plain {@code ; rc=$?} would never be reached when
+     * {@code timeout} returns 124, and the TIMEOUT state would be lost.
+     */
+    static String pipelineScript(String prelude, int timeoutSeconds, String pipelineCommand) {
+        return "rc=0; " + prelude + "timeout --signal=TERM " + timeoutSeconds + " " + pipelineCommand + " || rc=$?; " +
+            "if [ $rc -eq 0 ]; then echo ''; echo '::{\"outputs\":{\"state\":\"FINISHED\"}}::'; exit 0; " +
+            "elif [ $rc -eq 124 ]; then echo ''; echo '::{\"outputs\":{\"state\":\"TIMEOUT\"}}::' >&2; exit 124; " +
+            "else exit $rc; fi";
     }
 
     /**
-     * Builds the command wrapper for one pipeline command. The task's own variables (for example PYTHONPATH)
-     * are merged on top of the user's {@code env} instead of replacing it, and {@code beforeCommands} run
-     * first, as in the other script tasks.
+     * Builds the command wrapper for one pipeline command. The user's {@code env}, already rendered by
+     * {@link #commands(RunContext)}, is kept and the task's own variables are added on top. A task variable wins
+     * on a clash, except {@code PYTHONPATH}, which is extended so a user path is not lost. {@code beforeCommands}
+     * run first, as in the other script tasks.
      */
     CommandsWrapper buildCommands(RunContext runContext, Map<String, String> taskEnv, String command) throws Exception {
-        Map<String, String> mergedEnv = new HashMap<>(runContext.render(this.getEnv()).asMap(String.class, String.class));
-        mergedEnv.putAll(taskEnv);
+        CommandsWrapper wrapper = this.commands(runContext);
 
-        return this.commands(runContext)
-            .withContainerImage(runContext.render(containerImage).as(String.class).orElse(DEFAULT_IMAGE))
+        Map<String, String> mergedEnv = new HashMap<>(wrapper.getEnv() == null ? Map.of() : wrapper.getEnv());
+        taskEnv.forEach((key, value) -> {
+            String user = mergedEnv.get(key);
+            if ("PYTHONPATH".equals(key) && user != null && !user.isBlank()) {
+                mergedEnv.put(key, value + ":" + user);
+            } else {
+                mergedEnv.put(key, value);
+            }
+        });
+
+        return wrapper
             .withEnv(mergedEnv)
             .withInterpreter(this.interpreter)
             .withBeforeCommands(this.beforeCommands)
             .withBeforeCommandsWithOptions(true)
-            .withFailFast(runContext.render(this.failFast).as(Boolean.class).orElse(true))
             .withCommands(Property.ofValue(List.of(command)));
     }
 
