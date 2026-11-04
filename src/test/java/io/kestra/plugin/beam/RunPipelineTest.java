@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,8 @@ import io.kestra.plugin.beam.config.RunnerConfigHolder;
 
 import jakarta.inject.Inject;
 import jakarta.validation.Validator;
+
+import io.kestra.plugin.scripts.exec.scripts.runners.CommandsWrapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -196,5 +199,58 @@ class RunPipelineTest {
         }
         found.setAccessible(true);
         return found.invoke(target, args);
+    }
+
+    private RunContext contextFor(RunPipeline task) throws Exception {
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        return runContextFactory.of(flow, task, execution, taskRun);
+    }
+
+    @Test
+    void userEnvIsKeptNextToTheTaskEnv() throws Exception {
+        RunPipeline task = RunPipeline.builder()
+            .id("beam")
+            .type(RunPipeline.class.getName())
+            .definition(Property.ofValue("pipeline: {}"))
+            .env(Property.ofValue(Map.of("MIN_AMOUNT", "100", "PYTHONPATH", "/user/path")))
+            .build();
+
+        CommandsWrapper wrapper = task.buildCommands(contextFor(task), Map.of("PYTHONPATH", "/tmp/beam-py-1"), "echo hi");
+
+        assertEquals("100", wrapper.getEnv().get("MIN_AMOUNT"));
+        // the task needs its own PYTHONPATH to find the installed requirements, so it wins on a clash
+        assertEquals("/tmp/beam-py-1", wrapper.getEnv().get("PYTHONPATH"));
+    }
+
+    @Test
+    void userEnvAloneIsPassedWhenTheTaskAddsNone() throws Exception {
+        RunPipeline task = RunPipeline.builder()
+            .id("beam")
+            .type(RunPipeline.class.getName())
+            .definition(Property.ofValue("pipeline: {}"))
+            .env(Property.ofValue(Map.of("MIN_AMOUNT", "100")))
+            .build();
+
+        CommandsWrapper wrapper = task.buildCommands(contextFor(task), Map.of(), "echo hi");
+
+        assertEquals(Map.of("MIN_AMOUNT", "100"), wrapper.getEnv());
+    }
+
+    @Test
+    void beforeCommandsReachTheWrapper() throws Exception {
+        RunPipeline task = RunPipeline.builder()
+            .id("beam")
+            .type(RunPipeline.class.getName())
+            .definition(Property.ofValue("pipeline: {}"))
+            .beforeCommands(Property.ofValue(List.of("echo beforeCommands ran")))
+            .build();
+
+        RunContext runContext = contextFor(task);
+        CommandsWrapper wrapper = task.buildCommands(runContext, Map.of(), "echo hi");
+
+        assertEquals(List.of("echo beforeCommands ran"), runContext.render(wrapper.getBeforeCommands()).asList(String.class));
+        assertTrue(wrapper.isBeforeCommandsWithOptions());
     }
 }

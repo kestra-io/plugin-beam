@@ -38,6 +38,7 @@ import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.beam.config.*;
 import io.kestra.plugin.scripts.exec.AbstractExecScript;
 import io.kestra.plugin.scripts.exec.scripts.models.ScriptOutput;
+import io.kestra.plugin.scripts.exec.scripts.runners.CommandsWrapper;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -405,13 +406,27 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         }
     }
 
-    private ScriptOutput runCommandReturnOutput(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
-        ScriptOutput out = this.commands(runContext)
+    /**
+     * Builds the command wrapper for one pipeline command. The task's own variables (for example PYTHONPATH)
+     * are merged on top of the user's {@code env} instead of replacing it, and {@code beforeCommands} run
+     * first, as in the other script tasks.
+     */
+    CommandsWrapper buildCommands(RunContext runContext, Map<String, String> taskEnv, String command) throws Exception {
+        Map<String, String> mergedEnv = new HashMap<>(runContext.render(this.getEnv()).asMap(String.class, String.class));
+        mergedEnv.putAll(taskEnv);
+
+        return this.commands(runContext)
             .withContainerImage(runContext.render(containerImage).as(String.class).orElse(DEFAULT_IMAGE))
-            .withEnv(env)
+            .withEnv(mergedEnv)
             .withInterpreter(this.interpreter)
+            .withBeforeCommands(this.beforeCommands)
+            .withBeforeCommandsWithOptions(true)
             .withFailFast(runContext.render(this.failFast).as(Boolean.class).orElse(true))
-            .withCommands(Property.ofValue(List.of(command)))
+            .withCommands(Property.ofValue(List.of(command)));
+    }
+
+    private ScriptOutput runCommandReturnOutput(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
+        ScriptOutput out = this.buildCommands(runContext, env, command)
             .withLogConsumer(new DefaultLogConsumer(runContext) {
                 // To avoid having regular logs from the runner containers displayed as ERROR
                 @Override
