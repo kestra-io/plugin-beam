@@ -265,10 +265,10 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     }
 
     void warnIgnoredScriptProperties(RunContext runContext) throws Exception {
-        if (!runContext.render(this.getEnv()).asMap(String.class, String.class).isEmpty()) {
+        if (this.getEnv() != null) {
             runContext.logger().warn("`env` is only applied when `sdk` is `PYTHON`; it is ignored for the Java SDK, which runs in-process.");
         }
-        if (!runContext.render(this.beforeCommands).asList(String.class).isEmpty()) {
+        if (this.beforeCommands != null) {
             runContext.logger().warn("`beforeCommands` is only applied when `sdk` is `PYTHON`; it is ignored for the Java SDK, which runs in-process.");
         }
     }
@@ -383,7 +383,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
 
         runPipelineOverPythonCmd.addAll(buildOptionArgs(options, Map.of()));
 
-        String finalCmd = pipelineScript(prelude, pipelineTimeoutSeconds, String.join(" ", runPipelineOverPythonCmd));
+        var finalCmd = pipelineScript(prelude, pipelineTimeoutSeconds, String.join(" ", runPipelineOverPythonCmd));
 
         return runCommandReturnOutput(runContext, "beam-python", env, finalCmd);
     }
@@ -409,13 +409,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             : new RunnerConfigHolder(rc.toPipelineOptions(), rc);
     }
 
-    /**
-     * Wraps the pipeline command so that the final state is always reported.
-     * <p>
-     * The wrapper runs with {@code set -e} when {@code failFast} is on. The exit code of the pipeline command is
-     * therefore captured with {@code || rc=$?}: a plain {@code ; rc=$?} would never be reached when
-     * {@code timeout} returns 124, and the TIMEOUT state would be lost.
-     */
+    // '|| rc=$?' so set -e does not exit before the TIMEOUT marker is printed
     static String pipelineScript(String prelude, int timeoutSeconds, String pipelineCommand) {
         return "rc=0; " + prelude + "timeout --signal=TERM " + timeoutSeconds + " " + pipelineCommand + " || rc=$?; " +
             "if [ $rc -eq 0 ]; then echo ''; echo '::{\"outputs\":{\"state\":\"FINISHED\"}}::'; exit 0; " +
@@ -423,18 +417,12 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             "else exit $rc; fi";
     }
 
-    /**
-     * Builds the command wrapper for one pipeline command. The user's {@code env}, already rendered by
-     * {@link #commands(RunContext)}, is kept and the task's own variables are added on top. A task variable wins
-     * on a clash, except {@code PYTHONPATH}, which is extended so a user path is not lost. {@code beforeCommands}
-     * run first, as in the other script tasks.
-     */
     CommandsWrapper buildCommands(RunContext runContext, Map<String, String> taskEnv, String command) throws Exception {
-        CommandsWrapper wrapper = this.commands(runContext);
+        var wrapper = this.commands(runContext);
 
-        Map<String, String> mergedEnv = new HashMap<>(wrapper.getEnv() == null ? Map.of() : wrapper.getEnv());
+        var mergedEnv = new HashMap<String, String>(wrapper.getEnv() == null ? Map.of() : wrapper.getEnv());
         taskEnv.forEach((key, value) -> {
-            String user = mergedEnv.get(key);
+            var user = mergedEnv.get(key);
             if ("PYTHONPATH".equals(key) && user != null && !user.isBlank()) {
                 mergedEnv.put(key, value + ":" + user);
             } else {
@@ -451,7 +439,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
     }
 
     private ScriptOutput runCommandReturnOutput(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
-        ScriptOutput out = this.buildCommands(runContext, env, command)
+        var out = this.buildCommands(runContext, env, command)
             .withLogConsumer(new DefaultLogConsumer(runContext) {
                 // To avoid having regular logs from the runner containers displayed as ERROR
                 @Override

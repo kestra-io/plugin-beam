@@ -4,12 +4,15 @@ import java.io.ByteArrayInputStream;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
+
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.Execution;
@@ -18,24 +21,23 @@ import io.kestra.core.models.executions.TaskRun;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTaskException;
+import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
 import io.kestra.plugin.beam.config.RunnerConfigHolder;
 import io.kestra.plugin.core.runner.Process;
 import io.kestra.plugin.scripts.exec.scripts.models.ScriptOutput;
-import io.kestra.core.models.tasks.runners.DefaultLogConsumer;
+import io.kestra.plugin.scripts.exec.scripts.runners.CommandsWrapper;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import org.slf4j.event.Level;
-import reactor.core.publisher.Flux;
 import jakarta.validation.Validator;
-
-import io.kestra.plugin.scripts.exec.scripts.runners.CommandsWrapper;
+import reactor.core.publisher.Flux;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -64,7 +66,7 @@ class RunPipelineTest {
             .definition(Property.ofValue("pipeline: {}"))
             .build();
 
-        RunContext runContext = contextFor(task);
+        var runContext = contextFor(task);
 
         BeamRunner renderedRunner = runContext.render(task.getBeamRunner()).as(BeamRunner.class).orElseThrow();
         assertEquals(BeamRunner.DIRECT, renderedRunner);
@@ -215,22 +217,22 @@ class RunPipelineTest {
     }
 
     private RunContext contextFor(RunPipeline task) throws Exception {
-        Flow flow = TestsUtils.mockFlow();
-        Execution execution = TestsUtils.mockExecution(flow, Map.of());
-        TaskRun taskRun = TestsUtils.mockTaskRun(execution, task);
+        var flow = TestsUtils.mockFlow();
+        var execution = TestsUtils.mockExecution(flow, Map.of());
+        var taskRun = TestsUtils.mockTaskRun(execution, task);
         return runContextFactory.of(flow, task, execution, taskRun);
     }
 
     @Test
     void userEnvIsKeptNextToTheTaskEnv() throws Exception {
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .definition(Property.ofValue("pipeline: {}"))
             .env(Property.ofValue(Map.of("MIN_AMOUNT", "100", "SHARED", "user")))
             .build();
 
-        CommandsWrapper wrapper = task.buildCommands(contextFor(task), Map.of("PYTHONPATH", "/tmp/beam-py-1", "SHARED", "task"), "echo hi");
+        var wrapper = task.buildCommands(contextFor(task), Map.of("PYTHONPATH", "/tmp/beam-py-1", "SHARED", "task"), "echo hi");
 
         assertEquals("100", wrapper.getEnv().get("MIN_AMOUNT"));
         assertEquals("/tmp/beam-py-1", wrapper.getEnv().get("PYTHONPATH"));
@@ -240,43 +242,43 @@ class RunPipelineTest {
 
     @Test
     void userPythonPathIsExtendedNotReplaced() throws Exception {
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .definition(Property.ofValue("pipeline: {}"))
             .env(Property.ofValue(Map.of("PYTHONPATH", "/app/transforms")))
             .build();
 
-        CommandsWrapper wrapper = task.buildCommands(contextFor(task), Map.of("PYTHONPATH", "/tmp/beam-py-1"), "echo hi");
+        var wrapper = task.buildCommands(contextFor(task), Map.of("PYTHONPATH", "/tmp/beam-py-1"), "echo hi");
 
         assertEquals("/tmp/beam-py-1:/app/transforms", wrapper.getEnv().get("PYTHONPATH"));
     }
 
     @Test
     void userEnvAloneIsPassedWhenTheTaskAddsNone() throws Exception {
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .definition(Property.ofValue("pipeline: {}"))
             .env(Property.ofValue(Map.of("MIN_AMOUNT", "100")))
             .build();
 
-        CommandsWrapper wrapper = task.buildCommands(contextFor(task), Map.of(), "echo hi");
+        var wrapper = task.buildCommands(contextFor(task), Map.of(), "echo hi");
 
         assertEquals(Map.of("MIN_AMOUNT", "100"), wrapper.getEnv());
     }
 
     @Test
     void beforeCommandsReachTheWrapper() throws Exception {
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .definition(Property.ofValue("pipeline: {}"))
             .beforeCommands(Property.ofValue(List.of("echo beforeCommands ran")))
             .build();
 
-        RunContext runContext = contextFor(task);
-        CommandsWrapper wrapper = task.buildCommands(runContext, Map.of(), "echo hi");
+        var runContext = contextFor(task);
+        var wrapper = task.buildCommands(runContext, Map.of(), "echo hi");
 
         assertEquals(List.of("echo beforeCommands ran"), runContext.render(wrapper.getBeforeCommands()).asList(String.class));
         assertTrue(wrapper.isBeforeCommandsWithOptions());
@@ -284,16 +286,16 @@ class RunPipelineTest {
 
     @Test
     void failFastAndImageComeFromTheBaseClass() throws Exception {
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .definition(Property.ofValue("pipeline: {}"))
             .failFast(Property.ofValue(false))
             .containerImage(Property.ofValue("example/beam:1"))
             .build();
 
-        RunContext runContext = contextFor(task);
-        CommandsWrapper wrapper = task.buildCommands(runContext, Map.of(), "echo hi");
+        var runContext = contextFor(task);
+        var wrapper = task.buildCommands(runContext, Map.of(), "echo hi");
 
         assertEquals(false, wrapper.isFailFast());
         assertEquals("example/beam:1", wrapper.getContainerImage());
@@ -301,7 +303,7 @@ class RunPipelineTest {
 
     @Test
     void timeoutStateIsReportedWhenFailFastIsOn() throws Exception {
-        ScriptOutput out = runScript(RunPipeline.pipelineScript("", 1, "sleep 5"), Property.ofValue(true));
+        var out = runScript(RunPipeline.pipelineScript("", 1, "sleep 5"), Property.ofValue(true));
 
         assertEquals(124, out.getExitCode());
         assertEquals("TIMEOUT", out.getVars().get("state"));
@@ -309,7 +311,7 @@ class RunPipelineTest {
 
     @Test
     void finishedStateIsReportedOnSuccess() throws Exception {
-        ScriptOutput out = runScript(RunPipeline.pipelineScript("", 5, "true"), Property.ofValue(true));
+        var out = runScript(RunPipeline.pipelineScript("", 5, "true"), Property.ofValue(true));
 
         assertEquals(0, out.getExitCode());
         assertEquals("FINISHED", out.getVars().get("state"));
@@ -317,7 +319,7 @@ class RunPipelineTest {
 
     @Test
     void pipelineFailureKeepsItsExitCode() throws Exception {
-        ScriptOutput out = runScript(RunPipeline.pipelineScript("", 5, "sh -c 'exit 3'"), Property.ofValue(true));
+        var out = runScript(RunPipeline.pipelineScript("", 5, "sh -c 'exit 3'"), Property.ofValue(true));
 
         assertEquals(3, out.getExitCode());
         assertEquals(null, out.getVars().get("state"));
@@ -325,7 +327,7 @@ class RunPipelineTest {
 
     @Test
     void failedPreludeStopsBeforeThePipelineRuns() throws Exception {
-        ScriptOutput out = runScript(RunPipeline.pipelineScript("false && ", 5, "echo should-not-run"), Property.ofValue(true));
+        var out = runScript(RunPipeline.pipelineScript("false && ", 5, "echo should-not-run"), Property.ofValue(true));
 
         assertEquals(1, out.getExitCode());
         assertEquals(null, out.getVars().get("state"));
@@ -333,7 +335,7 @@ class RunPipelineTest {
 
     @Test
     void timeoutStateIsReportedWithoutFailFastToo() throws Exception {
-        ScriptOutput out = runScript(RunPipeline.pipelineScript("", 1, "sleep 5"), Property.ofValue(false));
+        var out = runScript(RunPipeline.pipelineScript("", 1, "sleep 5"), Property.ofValue(false));
 
         assertEquals(124, out.getExitCode());
         assertEquals("TIMEOUT", out.getVars().get("state"));
@@ -341,7 +343,7 @@ class RunPipelineTest {
 
     @Test
     void beforeCommandsRunAndAFailingOneStopsTheRun() throws Exception {
-        ScriptOutput ok = runScript(
+        var ok = runScript(
             RunPipeline.pipelineScript("", 5, "echo \"$FROM_ENV\""),
             Property.ofValue(true),
             List.of("export FROM_ENV=from-before-commands")
@@ -349,7 +351,7 @@ class RunPipelineTest {
         assertEquals(0, ok.getExitCode());
         assertEquals("FINISHED", ok.getVars().get("state"));
 
-        ScriptOutput failing = runScript(
+        var failing = runScript(
             RunPipeline.pipelineScript("", 5, "echo pipeline-ran"),
             Property.ofValue(true),
             List.of("exit 7")
@@ -360,25 +362,28 @@ class RunPipelineTest {
 
     @Test
     void javaSdkWarnsThatEnvAndBeforeCommandsAreIgnored() throws Exception {
-        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        var logs = new CopyOnWriteArrayList<LogEntry>();
         Flux<LogEntry> receive = TestsUtils.receive(logQueue, either -> logs.add(either.getLeft()));
 
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .sdk(Property.ofValue(BeamSDK.JAVA))
             .definition(Property.ofValue("pipeline: {}"))
-            .env(Property.ofValue(Map.of("A", "1")))
-            .beforeCommands(Property.ofValue(List.of("echo hi")))
+            .env(JacksonMapper.ofJson().readValue("{\"A\": \"{{ secret('NOT_DEFINED') }}\"}", new TypeReference<Property<Map<String, String>>>() {
+            }))
+            .beforeCommands(JacksonMapper.ofJson().readValue("[\"cd {{ workingDir }}\"]", new TypeReference<Property<List<String>>>() {
+            }))
             .build();
+        // neither value can be rendered here ({{ workingDir }} and the secret are undefined): the warning must not need them
         task.warnIgnoredScriptProperties(contextFor(task));
 
         TestsUtils.awaitLog(logs, l -> l.getLevel() == Level.WARN && l.getMessage().contains("`env`"));
         TestsUtils.awaitLog(logs, l -> l.getLevel() == Level.WARN && l.getMessage().contains("`beforeCommands`"));
 
         int warned = logs.size();
-        RunPipeline plain = RunPipeline.builder()
-            .id("beam")
+        var plain = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .sdk(Property.ofValue(BeamSDK.JAVA))
             .definition(Property.ofValue("pipeline: {}"))
@@ -396,8 +401,8 @@ class RunPipelineTest {
 
     /** Runs the script through the same wrapper RunPipeline uses, on the Process runner. A failing script returns its output instead of throwing. */
     private ScriptOutput runScript(String script, Property<Boolean> failFast, List<String> beforeCommands) throws Exception {
-        RunPipeline task = RunPipeline.builder()
-            .id("beam")
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .definition(Property.ofValue("pipeline: {}"))
             .taskRunner(Process.instance())
@@ -405,7 +410,7 @@ class RunPipelineTest {
             .beforeCommands(beforeCommands == null ? null : Property.ofValue(beforeCommands))
             .build();
 
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+        var runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         try {
             return task.buildCommands(runContext, Map.of(), script)
                 .withLogConsumer(new DefaultLogConsumer(runContext))
