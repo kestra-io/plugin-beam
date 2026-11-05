@@ -45,6 +45,8 @@ configurations.configureEach {
             details.because("jackson-databind and jackson-core security fixes")
         }
     }
+    // SEC-0369: platform BOM pins guava 33.4.8-jre, remove once it ships >= 33.7.2.
+    resolutionStrategy.force "com.google.guava:guava:33.7.2-jre"
     exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.12"
     exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.13"
 }
