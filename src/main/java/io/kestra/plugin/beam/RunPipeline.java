@@ -264,7 +264,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         };
     }
 
-    void warnIgnoredScriptProperties(RunContext runContext) throws Exception {
+    void warnIgnoredScriptProperties(RunContext runContext) {
         if (this.getEnv() != null) {
             runContext.logger().warn("`env` is only applied when `sdk` is `PYTHON`; it is ignored for the Java SDK, which runs in-process.");
         }
@@ -359,8 +359,8 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             Path target = Paths.get("/tmp/beam-py-" + UUID.randomUUID());
             prelude = "mkdir -p " + shellQuote(target.toString())
                 + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " "
-                + reqs.stream().map(this::shellQuote).collect(Collectors.joining(" "))
-                + " && ";
+                + reqs.stream().map(RunPipeline::shellQuote).collect(Collectors.joining(" "))
+                + " && " + pythonPathExport(target.toString());
             env.put("PYTHONPATH", target.toString());
         } else {
             runContext.logger().info("Using Beam SDK pre-installed in the container image.");
@@ -409,6 +409,11 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             : new RunnerConfigHolder(rc.toPipelineOptions(), rc);
     }
 
+    // beforeCommands run first and may export their own PYTHONPATH: extend whatever it is when the requirements are on the path
+    static String pythonPathExport(String target) {
+        return "export PYTHONPATH=" + shellQuote(target) + "\"${PYTHONPATH:+:$PYTHONPATH}\" && ";
+    }
+
     // '|| rc=$?' so set -e does not exit before the TIMEOUT marker is printed
     static String pipelineScript(String prelude, int timeoutSeconds, String pipelineCommand) {
         return "rc=0; " + prelude + "timeout --signal=TERM " + timeoutSeconds + " " + pipelineCommand + " || rc=$?; " +
@@ -435,6 +440,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             .withInterpreter(this.interpreter)
             .withBeforeCommands(this.beforeCommands)
             .withBeforeCommandsWithOptions(true)
+            .withContainerImage(runContext.render(containerImage).as(String.class).orElse(DEFAULT_IMAGE))
             .withCommands(Property.ofValue(List.of(command)));
     }
 
@@ -529,7 +535,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
      * POSIX-ish single-quote escape.
      * Example: abc'd -> 'abc'"'"'d'
      */
-    private String shellQuote(String stringToQuote) {
+    private static String shellQuote(String stringToQuote) {
         if (stringToQuote == null) {
             return "''";
         }

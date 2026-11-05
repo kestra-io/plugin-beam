@@ -46,6 +46,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @KestraTest
 class RunPipelineTest {
 
+    // prints the PYTHONPATH the pipeline command sees, as an output marker
+    private static final String PRINT_PYTHONPATH = "sh -c \"printf '::{\\\"outputs\\\":{\\\"pythonpath\\\":\\\"%s\\\"}}::\\n' \\\"\\$PYTHONPATH\\\"\"";
+
     @Inject
     private RunContextFactory runContextFactory;
 
@@ -378,21 +381,66 @@ class RunPipelineTest {
         // neither value can be rendered here ({{ workingDir }} and the secret are undefined): the warning must not need them
         task.warnIgnoredScriptProperties(contextFor(task));
 
-        TestsUtils.awaitLog(logs, l -> l.getLevel() == Level.WARN && l.getMessage().contains("`env`"));
-        TestsUtils.awaitLog(logs, l -> l.getLevel() == Level.WARN && l.getMessage().contains("`beforeCommands`"));
+        TestsUtils.awaitLog(logs, l -> task.getId().equals(l.getTaskId()) && l.getLevel() == Level.WARN && l.getMessage().contains("`env`"));
+        TestsUtils.awaitLog(logs, l -> task.getId().equals(l.getTaskId()) && l.getLevel() == Level.WARN && l.getMessage().contains("`beforeCommands`"));
+        receive.blockLast(Duration.ofMillis(100));
+    }
 
-        int warned = logs.size();
+    @Test
+    void javaSdkWithoutEnvAndBeforeCommandsDoesNotWarn() throws Exception {
+        var logs = new CopyOnWriteArrayList<LogEntry>();
+        Flux<LogEntry> receive = TestsUtils.receive(logQueue, either -> logs.add(either.getLeft()));
+
         var plain = RunPipeline.builder()
             .id(IdUtils.create())
             .type(RunPipeline.class.getName())
             .sdk(Property.ofValue(BeamSDK.JAVA))
             .definition(Property.ofValue("pipeline: {}"))
             .build();
-        plain.warnIgnoredScriptProperties(contextFor(plain));
-        Thread.sleep(500);
+        // a marker from the same task shows that the queue delivered what this task logged before the check
+        var runContext = contextFor(plain);
+        plain.warnIgnoredScriptProperties(runContext);
+        runContext.logger().info("marker");
+        TestsUtils.awaitLog(logs, l -> plain.getId().equals(l.getTaskId()) && "marker".equals(l.getMessage()));
 
-        assertEquals(warned, logs.size());
+        // only this task's warnings count: other tests log on the same queue
+        assertTrue(logs.stream().noneMatch(l -> plain.getId().equals(l.getTaskId()) && l.getLevel() == Level.WARN));
         receive.blockLast(Duration.ofMillis(100));
+    }
+
+    @Test
+    void imageFallsBackToTheDefaultWhenSetToNull() throws Exception {
+        var task = RunPipeline.builder()
+            .id(IdUtils.create())
+            .type(RunPipeline.class.getName())
+            .definition(Property.ofValue("pipeline: {}"))
+            .containerImage(Property.ofValue(null))
+            .build();
+
+        var wrapper = task.buildCommands(contextFor(task), Map.of(), "echo hi");
+
+        assertEquals("apache/beam_python3.11_sdk:latest", wrapper.getContainerImage());
+    }
+
+    @Test
+    void requirementsPathIsExtendedWhenBeforeCommandsExportAPythonPath() throws Exception {
+        var out = runScript(
+            RunPipeline.pipelineScript(RunPipeline.pythonPathExport("/tmp/beam-py-test"), 5, PRINT_PYTHONPATH),
+            Property.ofValue(true),
+            List.of("export PYTHONPATH=/app/transforms")
+        );
+
+        assertEquals("/tmp/beam-py-test:/app/transforms", out.getVars().get("pythonpath"));
+    }
+
+    @Test
+    void requirementsPathAloneWhenNoPythonPathIsSet() throws Exception {
+        var out = runScript(
+            RunPipeline.pipelineScript("unset PYTHONPATH; " + RunPipeline.pythonPathExport("/tmp/beam-py-test"), 5, PRINT_PYTHONPATH),
+            Property.ofValue(true)
+        );
+
+        assertEquals("/tmp/beam-py-test", out.getVars().get("pythonpath"));
     }
 
     private ScriptOutput runScript(String script, Property<Boolean> failFast) throws Exception {
