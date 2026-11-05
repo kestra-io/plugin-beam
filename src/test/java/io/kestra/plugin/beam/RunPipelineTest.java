@@ -37,7 +37,6 @@ import io.kestra.plugin.scripts.exec.scripts.runners.CommandsWrapper;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.validation.Validator;
-import reactor.core.publisher.Flux;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -235,26 +234,11 @@ class RunPipelineTest {
             .env(Property.ofValue(Map.of("MIN_AMOUNT", "100", "SHARED", "user")))
             .build();
 
-        var wrapper = task.buildCommands(contextFor(task), Map.of("PYTHONPATH", "/tmp/beam-py-1", "SHARED", "task"), "echo hi");
+        var wrapper = task.buildCommands(contextFor(task), Map.of("SHARED", "task"), "echo hi");
 
         assertEquals("100", wrapper.getEnv().get("MIN_AMOUNT"));
-        assertEquals("/tmp/beam-py-1", wrapper.getEnv().get("PYTHONPATH"));
-        // for any other key the task's value wins
+        // on a clash the task's value wins
         assertEquals("task", wrapper.getEnv().get("SHARED"));
-    }
-
-    @Test
-    void userPythonPathIsExtendedNotReplaced() throws Exception {
-        var task = RunPipeline.builder()
-            .id(IdUtils.create())
-            .type(RunPipeline.class.getName())
-            .definition(Property.ofValue("pipeline: {}"))
-            .env(Property.ofValue(Map.of("PYTHONPATH", "/app/transforms")))
-            .build();
-
-        var wrapper = task.buildCommands(contextFor(task), Map.of("PYTHONPATH", "/tmp/beam-py-1"), "echo hi");
-
-        assertEquals("/tmp/beam-py-1:/app/transforms", wrapper.getEnv().get("PYTHONPATH"));
     }
 
     @Test
@@ -366,7 +350,7 @@ class RunPipelineTest {
     @Test
     void javaSdkWarnsThatEnvAndBeforeCommandsAreIgnored() throws Exception {
         var logs = new CopyOnWriteArrayList<LogEntry>();
-        Flux<LogEntry> receive = TestsUtils.receive(logQueue, either -> logs.add(either.getLeft()));
+        var receive = TestsUtils.receive(logQueue, either -> logs.add(either.getLeft()));
 
         var task = RunPipeline.builder()
             .id(IdUtils.create())
@@ -389,7 +373,7 @@ class RunPipelineTest {
     @Test
     void javaSdkWithoutEnvAndBeforeCommandsDoesNotWarn() throws Exception {
         var logs = new CopyOnWriteArrayList<LogEntry>();
-        Flux<LogEntry> receive = TestsUtils.receive(logQueue, either -> logs.add(either.getLeft()));
+        var receive = TestsUtils.receive(logQueue, either -> logs.add(either.getLeft()));
 
         var plain = RunPipeline.builder()
             .id(IdUtils.create())
@@ -434,13 +418,15 @@ class RunPipelineTest {
     }
 
     @Test
-    void requirementsPathAloneWhenNoPythonPathIsSet() throws Exception {
+    void requirementsPathIsAddedToAPythonPathSetThroughEnv() throws Exception {
         var out = runScript(
-            RunPipeline.pipelineScript("unset PYTHONPATH; " + RunPipeline.pythonPathExport("/tmp/beam-py-test"), 5, PRINT_PYTHONPATH),
-            Property.ofValue(true)
+            RunPipeline.pipelineScript(RunPipeline.pythonPathExport("/tmp/beam-py-test"), 5, PRINT_PYTHONPATH),
+            Property.ofValue(true),
+            null,
+            Map.of("PYTHONPATH", "/app/transforms")
         );
 
-        assertEquals("/tmp/beam-py-test", out.getVars().get("pythonpath"));
+        assertEquals("/tmp/beam-py-test:/app/transforms", out.getVars().get("pythonpath"));
     }
 
     private ScriptOutput runScript(String script, Property<Boolean> failFast) throws Exception {
@@ -449,6 +435,10 @@ class RunPipelineTest {
 
     /** Runs the script through the same wrapper RunPipeline uses, on the Process runner. A failing script returns its output instead of throwing. */
     private ScriptOutput runScript(String script, Property<Boolean> failFast, List<String> beforeCommands) throws Exception {
+        return runScript(script, failFast, beforeCommands, null);
+    }
+
+    private ScriptOutput runScript(String script, Property<Boolean> failFast, List<String> beforeCommands, Map<String, String> env) throws Exception {
         var task = RunPipeline.builder()
             .id(IdUtils.create())
             .type(RunPipeline.class.getName())
@@ -456,6 +446,7 @@ class RunPipelineTest {
             .taskRunner(Process.instance())
             .failFast(failFast)
             .beforeCommands(beforeCommands == null ? null : Property.ofValue(beforeCommands))
+            .env(env == null ? null : Property.ofValue(env))
             .build();
 
         var runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());

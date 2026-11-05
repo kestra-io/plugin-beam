@@ -361,7 +361,6 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
                 + " && python3 -m pip install --no-cache-dir --target " + shellQuote(target.toString()) + " "
                 + reqs.stream().map(RunPipeline::shellQuote).collect(Collectors.joining(" "))
                 + " && " + pythonPathExport(target.toString());
-            env.put("PYTHONPATH", target.toString());
         } else {
             runContext.logger().info("Using Beam SDK pre-installed in the container image.");
         }
@@ -426,14 +425,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         var wrapper = this.commands(runContext);
 
         var mergedEnv = new HashMap<String, String>(wrapper.getEnv() == null ? Map.of() : wrapper.getEnv());
-        taskEnv.forEach((key, value) -> {
-            var user = mergedEnv.get(key);
-            if ("PYTHONPATH".equals(key) && user != null && !user.isBlank()) {
-                mergedEnv.put(key, value + ":" + user);
-            } else {
-                mergedEnv.put(key, value);
-            }
-        });
+        mergedEnv.putAll(taskEnv);
 
         return wrapper
             .withEnv(mergedEnv)
