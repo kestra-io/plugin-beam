@@ -351,7 +351,6 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             yaml.getBytes(StandardCharsets.UTF_8)
         );
 
-        Map<String, String> env = new HashMap<>();
         List<String> reqs = runContext.render(this.requirements).asList(String.class);
 
         String prelude = "";
@@ -384,7 +383,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
 
         var finalCmd = pipelineScript(prelude, pipelineTimeoutSeconds, String.join(" ", runPipelineOverPythonCmd));
 
-        return runCommandReturnOutput(runContext, "beam-python", env, finalCmd);
+        return runCommandReturnOutput(runContext, "beam-python", finalCmd);
     }
 
     private RunnerConfigHolder resolveRunnerOptions(RunContext runContext, BeamRunner runner) throws Exception {
@@ -421,14 +420,8 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             "else exit $rc; fi";
     }
 
-    CommandsWrapper buildCommands(RunContext runContext, Map<String, String> taskEnv, String command) throws Exception {
-        var wrapper = this.commands(runContext);
-
-        var mergedEnv = new HashMap<String, String>(wrapper.getEnv() == null ? Map.of() : wrapper.getEnv());
-        mergedEnv.putAll(taskEnv);
-
-        return wrapper
-            .withEnv(mergedEnv)
+    CommandsWrapper buildCommands(RunContext runContext, String command) throws Exception {
+        return this.commands(runContext)
             .withInterpreter(this.interpreter)
             .withBeforeCommands(this.beforeCommands)
             .withBeforeCommandsWithOptions(true)
@@ -436,8 +429,8 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             .withCommands(Property.ofValue(List.of(command)));
     }
 
-    private ScriptOutput runCommandReturnOutput(RunContext runContext, String label, Map<String, String> env, String command) throws Exception {
-        var out = this.buildCommands(runContext, env, command)
+    private ScriptOutput runCommandReturnOutput(RunContext runContext, String label, String command) throws Exception {
+        var out = this.buildCommands(runContext, command)
             .withLogConsumer(new DefaultLogConsumer(runContext) {
                 // To avoid having regular logs from the runner containers displayed as ERROR
                 @Override

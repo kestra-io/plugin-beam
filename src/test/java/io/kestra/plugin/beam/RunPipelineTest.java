@@ -226,23 +226,7 @@ class RunPipelineTest {
     }
 
     @Test
-    void userEnvIsKeptNextToTheTaskEnv() throws Exception {
-        var task = RunPipeline.builder()
-            .id(IdUtils.create())
-            .type(RunPipeline.class.getName())
-            .definition(Property.ofValue("pipeline: {}"))
-            .env(Property.ofValue(Map.of("MIN_AMOUNT", "100", "SHARED", "user")))
-            .build();
-
-        var wrapper = task.buildCommands(contextFor(task), Map.of("SHARED", "task"), "echo hi");
-
-        assertEquals("100", wrapper.getEnv().get("MIN_AMOUNT"));
-        // on a clash the task's value wins
-        assertEquals("task", wrapper.getEnv().get("SHARED"));
-    }
-
-    @Test
-    void userEnvAloneIsPassedWhenTheTaskAddsNone() throws Exception {
+    void userEnvReachesTheWrapper() throws Exception {
         var task = RunPipeline.builder()
             .id(IdUtils.create())
             .type(RunPipeline.class.getName())
@@ -250,7 +234,7 @@ class RunPipelineTest {
             .env(Property.ofValue(Map.of("MIN_AMOUNT", "100")))
             .build();
 
-        var wrapper = task.buildCommands(contextFor(task), Map.of(), "echo hi");
+        var wrapper = task.buildCommands(contextFor(task), "echo hi");
 
         assertEquals(Map.of("MIN_AMOUNT", "100"), wrapper.getEnv());
     }
@@ -265,7 +249,7 @@ class RunPipelineTest {
             .build();
 
         var runContext = contextFor(task);
-        var wrapper = task.buildCommands(runContext, Map.of(), "echo hi");
+        var wrapper = task.buildCommands(runContext, "echo hi");
 
         assertEquals(List.of("echo beforeCommands ran"), runContext.render(wrapper.getBeforeCommands()).asList(String.class));
         assertTrue(wrapper.isBeforeCommandsWithOptions());
@@ -282,7 +266,7 @@ class RunPipelineTest {
             .build();
 
         var runContext = contextFor(task);
-        var wrapper = task.buildCommands(runContext, Map.of(), "echo hi");
+        var wrapper = task.buildCommands(runContext, "echo hi");
 
         assertEquals(false, wrapper.isFailFast());
         assertEquals("example/beam:1", wrapper.getContainerImage());
@@ -401,7 +385,7 @@ class RunPipelineTest {
             .containerImage(Property.ofValue(null))
             .build();
 
-        var wrapper = task.buildCommands(contextFor(task), Map.of(), "echo hi");
+        var wrapper = task.buildCommands(contextFor(task), "echo hi");
 
         assertEquals("apache/beam_python3.11_sdk:latest", wrapper.getContainerImage());
     }
@@ -451,7 +435,7 @@ class RunPipelineTest {
 
         var runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
         try {
-            return task.buildCommands(runContext, Map.of(), script)
+            return task.buildCommands(runContext, script)
                 .withLogConsumer(new DefaultLogConsumer(runContext))
                 .run();
         } catch (RunnableTaskException e) {
