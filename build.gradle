@@ -47,6 +47,8 @@ configurations.configureEach {
     }
     // SEC-0369: platform BOM pins guava 33.4.8-jre, remove once it ships >= 33.7.2.
     resolutionStrategy.force "com.google.guava:guava:33.7.2-jre"
+    // SEC-0370: snappy-java comes via flink-runtime, remove once Flink/Beam or the Kestra platform BOM ship >= 1.1.10.9.
+    resolutionStrategy.force "org.xerial.snappy:snappy-java:1.1.10.9"
     // SEC-0184/0233/0204: wire and kaml come via Beam's apicurio protobuf utilities, remove once Beam ships patched versions.
     resolutionStrategy.eachDependency { details ->
         if (details.requested.group == "com.squareup.wire") {
