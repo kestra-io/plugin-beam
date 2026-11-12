@@ -16,5 +16,6 @@ RUN ln -sf /usr/bin/python3 /usr/bin/python
 RUN python3 -m pip install --no-cache-dir --upgrade pip \
  && python3 -m pip install --no-cache-dir apache-beam[yaml]==2.69.0
 
-# To be sure to be able (for the tests) to access to /var/run/docker.sock
-USER root
+# Drop privileges: the official Flink image provides the unprivileged `flink` user.
+# Tests that need /var/run/docker.sock override the user in docker-compose-ci.yml.
+USER flink
