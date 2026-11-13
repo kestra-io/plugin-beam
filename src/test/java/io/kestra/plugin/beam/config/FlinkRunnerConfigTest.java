@@ -1,5 +1,7 @@
 package io.kestra.plugin.beam.config;
 
+import java.util.Map;
+
 import org.apache.beam.runners.flink.FlinkPipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,37 @@ class FlinkRunnerConfigTest {
         config.applyTo(options);
 
         assertThat(options.as(FlinkPipelineOptions.class).getFlinkMaster(), is("[local]"));
+    }
+
+    @Test
+    void shouldUsePythonOptionNamesForPythonSdkAndJavaOptionNamesForJavaSdk() {
+        var config = FlinkRunnerConfig.builder()
+            .savepointDir("/tmp/savepoints")
+            .stateBackend("rocksdb")
+            .stateBackendStoragePath("file:///tmp/state")
+            .jarPath("/tmp/job.jar")
+            .build();
+
+        assertThat(
+            config.toPipelineOptions(), is(
+                Map.of(
+                    "savepoint_path", "/tmp/savepoints",
+                    "state_backend", "rocksdb",
+                    "state_backend_storage_path", "file:///tmp/state",
+                    "files_to_stage", "/tmp/job.jar"
+                )
+            )
+        );
+        assertThat(
+            config.toJavaPipelineOptions(), is(
+                Map.of(
+                    "savepointPath", "/tmp/savepoints",
+                    "stateBackend", "rocksdb",
+                    "stateBackendStoragePath", "file:///tmp/state",
+                    "filesToStage", "/tmp/job.jar"
+                )
+            )
+        );
     }
 
     @Test

@@ -61,7 +61,7 @@ public class FlinkRunnerConfig implements RunnerConfig {
         var options = new LinkedHashMap<String, Object>();
 
         flinkMaster().ifPresent(value -> options.put("flink_master", value));
-        options.putAll(toJavaPipelineOptions());
+        options.putAll(flinkOptions("savepoint_path", "state_backend", "state_backend_storage_path", "files_to_stage"));
 
         return options;
     }
@@ -69,13 +69,17 @@ public class FlinkRunnerConfig implements RunnerConfig {
     // The Java SDK gets the Flink master in applyTo, as its arg parser only knows `flinkMaster`.
     @Override
     public Map<String, Object> toJavaPipelineOptions() {
+        return flinkOptions("savepointPath", "stateBackend", "stateBackendStoragePath", "filesToStage");
+    }
+
+    private Map<String, Object> flinkOptions(String savepointKey, String stateBackendKey, String stateBackendStoragePathKey, String filesToStageKey) {
         var options = new LinkedHashMap<String, Object>();
 
         Optional.ofNullable(parallelism).ifPresent(value -> options.put("parallelism", value));
-        Optional.ofNullable(savepointDir).ifPresent(value -> options.put("savepoint_path", value));
-        Optional.ofNullable(stateBackend).ifPresent(value -> options.put("state_backend", value));
-        Optional.ofNullable(stateBackendStoragePath).ifPresent(value -> options.put("state_backend_storage_path", value));
-        Optional.ofNullable(jarPath).ifPresent(value -> options.put("files_to_stage", value));
+        Optional.ofNullable(savepointDir).ifPresent(value -> options.put(savepointKey, value));
+        Optional.ofNullable(stateBackend).ifPresent(value -> options.put(stateBackendKey, value));
+        Optional.ofNullable(stateBackendStoragePath).ifPresent(value -> options.put(stateBackendStoragePathKey, value));
+        Optional.ofNullable(jarPath).ifPresent(value -> options.put(filesToStageKey, value));
 
         return options;
     }

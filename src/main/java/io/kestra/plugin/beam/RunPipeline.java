@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 import org.apache.beam.runners.dataflow.DataflowRunner;
@@ -303,14 +304,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         Map<String, String> options,
         RunnerConfigHolder runnerConfigHolder) {
 
-        PipelineOptions po = PipelineOptionsFactory
-            .fromArgs(buildOptionArgs(options, javaRunnerOptions(runnerConfigHolder)).toArray(String[]::new))
-            .withValidation()
-            .create();
-
-        if (runnerConfigHolder.config() != null) {
-            runnerConfigHolder.config().applyTo(po);
-        }
+        var po = javaPipelineOptions(options, runnerConfigHolder);
         po.setRunner(resolveRunnerClass(runner));
 
         Pipeline p = Pipeline.create(po);
@@ -321,6 +315,17 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
 
         publishMetrics(runContext, result.metrics().queryMetrics(MetricsFilter.builder().build()));
         return ScriptOutput.builder().exitCode(0).build();
+    }
+
+    // No shell on this path: values are passed to Beam as they are.
+    PipelineOptions javaPipelineOptions(Map<String, String> options, RunnerConfigHolder runnerConfigHolder) {
+        var args = buildOptionArgs(options, javaRunnerOptions(runnerConfigHolder), UnaryOperator.identity());
+        var po = PipelineOptionsFactory.fromArgs(args.toArray(String[]::new)).withValidation().create();
+
+        if (runnerConfigHolder.config() != null) {
+            runnerConfigHolder.config().applyTo(po);
+        }
+        return po;
     }
 
     private ScriptOutput runPythonPortable(
@@ -379,14 +384,14 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
             runPipelineOverPythonCmd.add("--job_endpoint " + shellQuote(jobEndpoint));
         }
 
-        runPipelineOverPythonCmd.addAll(buildOptionArgs(options, Map.of()));
+        runPipelineOverPythonCmd.addAll(buildOptionArgs(options, Map.of(), RunPipeline::shellQuote));
 
         var finalCmd = pipelineScript(prelude, pipelineTimeoutSeconds, String.join(" ", runPipelineOverPythonCmd));
 
         return runCommandReturnOutput(runContext, "beam-python", finalCmd);
     }
 
-    private RunnerConfigHolder resolveRunnerOptions(RunContext runContext, BeamRunner runner) throws Exception {
+    RunnerConfigHolder resolveRunnerOptions(RunContext runContext, BeamRunner runner) throws Exception {
 
         Map<String, Object> rRunnerConfig = runContext.render(this.runnerConfig).asMap(String.class, Object.class);
 
@@ -460,10 +465,11 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
 
     private List<String> buildOptionArgs(
         Map<String, String> options,
-        Map<String, Object> runnerOptions) {
+        Map<String, Object> runnerOptions,
+        UnaryOperator<String> quote) {
         List<String> args = new ArrayList<>();
-        options.forEach((k, v) -> args.add("--" + k + "=" + shellQuote(v)));
-        runnerOptions.forEach((k, v) -> args.add("--" + k + "=" + shellQuote(stringify(v))));
+        options.forEach((k, v) -> args.add("--%s=%s".formatted(k, quote.apply(v))));
+        runnerOptions.forEach((k, v) -> args.add("--%s=%s".formatted(k, quote.apply(stringify(v)))));
         return args;
     }
 
@@ -481,7 +487,7 @@ public class RunPipeline extends AbstractExecScript implements io.kestra.core.mo
         }
     }
 
-    private String loadDefinition(RunContext runContext) throws Exception {
+    String loadDefinition(RunContext runContext) throws Exception {
         String inline = runContext.render(definition).as(String.class).orElse(null);
         if (inline != null) {
             return inline;
