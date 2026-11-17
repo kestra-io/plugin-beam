@@ -57,6 +57,11 @@ configurations.configureEach {
             details.useVersion("0.104.0")
         }
     }
+    // SEC-0140: org.lz4:lz4-java (abandoned at 1.8.0) comes via flink-runtime; swap it for the maintained at.yawk fork (CVE-2025-66566 needs >= 1.10.1).
+    // Remove once Flink/Beam depend on at.yawk.lz4 directly.
+    resolutionStrategy.dependencySubstitution {
+        substitute module("org.lz4:lz4-java") using module("at.yawk.lz4:lz4-java:1.14.0") because "SEC-0140 lz4-java out-of-bounds vulnerabilities"
+    }
     exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.12"
     exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_2.13"
 }
